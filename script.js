@@ -202,7 +202,11 @@ function renderResumo() {
   const diarias = totalDiarias();
   const salario = Number(dados.salario) || 0;
   const totalReceber = salario + diarias;
-  const sobra = totalReceber - faltaPagar;
+  // "Sobra" usa o TOTAL das contas (pagas + pendentes), não só as pendentes.
+  // Uma conta paga já saiu do bolso — marcar como "Pago" é só um controle de
+  // status, não deve fazer esse dinheiro "voltar" para o valor que sobra.
+  // Quem muda com o status é só o "Falta pagar" (acima).
+  const sobra = totalReceber - totalContas;
 
   document.getElementById('totalDiarias').textContent = formatarMoeda(diarias);
   document.getElementById('totalContas').textContent = formatarMoeda(totalContas);
