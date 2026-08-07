@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle Financeiro</title>
+<meta name="description" content="Controle suas contas, diárias e salário do mês, tudo salvo no seu próprio aparelho.">
+<meta name="theme-color" content="#1f4e78">
+
+<!-- Open Graph: controla o que aparece quando o link é compartilhado
+     (WhatsApp, Telegram, Instagram, etc). Sem isso, só aparece a URL crua. -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Controle Financeiro">
+<meta property="og:description" content="Contas, diárias e salário do mês, tudo em um só lugar. Seus dados ficam só no seu aparelho.">
+<meta property="og:image" content="og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+
+<!-- Configuração de PWA: permite instalar o site como um app -->
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Financeiro">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icon-16.png">
+<link rel="shortcut icon" href="favicon.ico">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+
+  <!-- Cabeçalho: logo + título + ações rápidas -->
+  <header class="topo">
+    <div class="marca">
+      <img src="icon-192.png" alt="Logo do Controle Financeiro" class="logo">
+      <div>
+        <h1>Controle Financeiro</h1>
+        <p class="subtitulo">Toque nos campos para editar. Tudo fica salvo neste aparelho.</p>
+      </div>
+    </div>
+    <div class="botoes-topo">
+      <button class="btn-icone" id="btnInstalar" title="Instalar como app" aria-label="Instalar como app">📲</button>
+      <button class="btn-icone" id="btnTema" title="Alternar tema claro/escuro" aria-label="Alternar tema">🌙</button>
+    </div>
+  </header>
+
+  <!-- Modal de instalação: usa o prompt nativo quando disponível (Android/desktop)
+       e cai para instruções manuais quando o navegador não oferece esse recurso (iPhone/Safari) -->
+  <div class="modal-fundo" id="modalInstalar">
+    <div class="modal-caixa">
+      <div class="modal-titulo">
+        <img src="icon-192.png" alt="" class="modal-logo">
+        Instalar como app
+      </div>
+      <div class="modal-texto">
+        Instale o Controle Financeiro na tela inicial do seu aparelho e use como um app normal,
+        em tela cheia e sem precisar abrir o navegador.
+      </div>
+
+      <button class="btn-add" id="btnInstalarNativo" style="width:100%; display:none;">⬇️ Baixar / instalar app</button>
+
+      <div class="modal-secao" id="secaoIOS">
+        <strong>📱 iPhone (Safari)</strong>
+        <ol>
+          <li>Toque no ícone de compartilhar (o quadrado com seta pra cima)</li>
+          <li>Escolha "Adicionar à Tela de Início"</li>
+          <li>Toque em "Adicionar"</li>
+        </ol>
+      </div>
+      <div class="modal-secao" id="secaoAndroid">
+        <strong>🤖 Android (Chrome), sem o botão acima</strong>
+        <ol>
+          <li>Toque nos três pontinhos no canto superior direito</li>
+          <li>Escolha "Adicionar à tela inicial" ou "Instalar app"</li>
+          <li>Confirme</li>
+        </ol>
+      </div>
+      <button class="btn-secundario" id="btnFecharModal" style="width:100%;">Entendi</button>
+    </div>
+  </div>
+
+  <main>
+    <!-- Resumo do mês: números calculados a partir das outras seções -->
+    <section class="card" aria-labelledby="tituloResumo">
+      <h2 id="tituloResumo">Resumo do mês</h2>
+      <div class="resumo-grid">
+        <div class="resumo-item">
+          <label for="salario">Salário fixo</label>
+          <input type="number" id="salario" step="0.01" min="0" value="0" inputmode="decimal">
+        </div>
+        <div class="resumo-item">
+          <label>Diárias recebidas</label>
+          <div class="valor" id="totalDiarias">R$ 0,00</div>
+        </div>
+        <div class="resumo-item">
+          <label>Total das contas</label>
+          <div class="valor" id="totalContas">R$ 0,00</div>
+        </div>
+        <div class="resumo-item">
+          <label>Falta pagar</label>
+          <div class="valor" id="faltaPagar">R$ 0,00</div>
+        </div>
+        <div class="resumo-item destaque">
+          <label>O QUE VAI SOBRAR</label>
+          <div class="valor" id="sobra">R$ 0,00</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contas: começa vazia de propósito, cada pessoa monta a sua lista -->
+    <section class="card" aria-labelledby="tituloContas">
+      <h2 id="tituloContas">Contas</h2>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Conta</th>
+            <th scope="col">Valor</th>
+            <th scope="col">Status</th>
+            <th scope="col"><span class="sr-only">Remover</span></th>
+          </tr>
+        </thead>
+        <tbody id="tabelaContas"></tbody>
+      </table>
+      </div>
+      <p class="vazio-aviso" id="avisoVazio">Nenhuma conta cadastrada ainda. Adicione a primeira abaixo. 👇</p>
+      <button class="btn-add" id="btnAddConta">+ adicionar conta</button>
+      <div class="linha-total">
+        <span>Total geral</span>
+        <span id="totalGeralRodape">R$ 0,00</span>
+      </div>
+    </section>
+
+    <!-- Diárias: valor por dia da semana + calendário para marcar os dias trabalhados -->
+    <section class="card" aria-labelledby="tituloDiarias">
+      <h2 id="tituloDiarias">Dias de trabalho e diária</h2>
+      <div class="diaria-config">
+        <div>
+          <label for="valorSemana">Seg-Sex (R$)</label>
+          <input type="number" id="valorSemana" step="0.01" min="0" value="0" inputmode="decimal">
+        </div>
+        <div>
+          <label for="valorSabado">Sábado (R$)</label>
+          <input type="number" id="valorSabado" step="0.01" min="0" value="0" inputmode="decimal">
+        </div>
+        <div>
+          <label for="valorDomingo">Domingo (R$)</label>
+          <input type="number" id="valorDomingo" step="0.01" min="0" value="0" inputmode="decimal">
+        </div>
+      </div>
+      <div class="calendario-nav">
+        <button class="btn-icone" id="btnMesAnterior" aria-label="Mês anterior">‹</button>
+        <span id="rotuloMes" class="rotulo-mes"></span>
+        <button class="btn-icone" id="btnMesProximo" aria-label="Próximo mês">›</button>
+      </div>
+      <div class="calendario" id="calendario"></div>
+    </section>
+  </main>
+
+  <p class="status-save" id="statusSalvo"></p>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
