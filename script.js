@@ -211,7 +211,11 @@ function renderResumo() {
   document.getElementById('totalDiarias').textContent = formatarMoeda(diarias);
   document.getElementById('totalContas').textContent = formatarMoeda(totalContas);
   document.getElementById('faltaPagar').textContent = formatarMoeda(faltaPagar);
-  document.getElementById('sobra').textContent = formatarMoeda(sobra);
+  const elSobra = document.getElementById('sobra');
+  elSobra.textContent = formatarMoeda(sobra);
+  // Fica vermelho quando o orçamento estoura (sobra negativa) — assim
+  // dá pra ver de longe que algo precisa de atenção, sem ler o número.
+  elSobra.closest('.resumo-item').classList.toggle('negativo', sobra < 0);
   document.getElementById('totalGeralRodape').textContent = formatarMoeda(totalContas);
 }
 
