@@ -85,7 +85,8 @@ function renderContas() {
     inputValor.type = 'number';
     inputValor.step = '0.01';
     inputValor.min = '0';
-    inputValor.value = conta.valor;
+    inputValor.placeholder = '0,00';
+    inputValor.value = (Number(conta.valor) === 0) ? '' : conta.valor;
     inputValor.addEventListener('input', e => { conta.valor = parseFloat(e.target.value) || 0; salvar(); renderResumo(); });
     tdValor.appendChild(inputValor);
 
@@ -331,14 +332,23 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Preenche um campo numérico só quando o valor salvo é diferente de zero.
+// Se o valor for 0 (padrão inicial), deixa o campo vazio — assim a pessoa
+// não precisa apagar um "0" toda vez que for digitar. O placeholder no HTML
+// já mostra "0,00" como dica visual, sem isso contar como valor de verdade.
+function preencherCampoNumerico(id, valor) {
+  const el = document.getElementById(id);
+  el.value = (Number(valor) === 0) ? '' : valor;
+}
+
 // ===== Inicialização =====
 function iniciar() {
   carregar();
   aplicarTema();
-  document.getElementById('salario').value = dados.salario;
-  document.getElementById('valorSemana').value = dados.valorSemana;
-  document.getElementById('valorSabado').value = dados.valorSabado;
-  document.getElementById('valorDomingo').value = dados.valorDomingo;
+  preencherCampoNumerico('salario', dados.salario);
+  preencherCampoNumerico('valorSemana', dados.valorSemana);
+  preencherCampoNumerico('valorSabado', dados.valorSabado);
+  preencherCampoNumerico('valorDomingo', dados.valorDomingo);
   renderContas();
   renderCalendario();
   renderResumo();

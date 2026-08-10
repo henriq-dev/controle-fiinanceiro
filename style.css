@@ -60,6 +60,10 @@ input, select {
   font-size: 16px !important;
   touch-action: manipulation;
 }
+input::placeholder {
+  color: var(--texto-terciario);
+  opacity: 1;
+}
 
 .sr-only {
   position: absolute;
