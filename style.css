@@ -392,6 +392,13 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   border-color: #7dc98a;
 }
 .dia.trabalhado .val { color: var(--verde-texto); }
+/* Dia de hoje: contorno azul sempre visível, mesmo se também estiver
+   marcado como "trabalhado" (as duas classes convivem). */
+.dia.hoje {
+  border: 2px solid var(--azul);
+  font-weight: bold;
+}
+.dia.hoje .num { color: var(--azul-texto-forte); }
 .dia.vazio { visibility: hidden; cursor: default; }
 
 .status-save {

@@ -143,6 +143,10 @@ function renderCalendario() {
   cal.innerHTML = '';
   const ano = mesExibido.ano;
   const mes = mesExibido.mes;
+  // Pega a data atual toda vez que o calendário é desenhado (não guardamos
+  // isso em variável fixa), assim o destaque do dia de hoje sempre bate,
+  // mesmo que a pessoa deixe o app aberto e passe da meia-noite.
+  const hojeReal = new Date();
 
   const nomeMes = new Date(ano, mes, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   document.getElementById('rotuloMes').textContent = nomeMes;
@@ -167,9 +171,11 @@ function renderCalendario() {
     const chave = `${ano}-${mes}-${dia}`;
     const trabalhado = !!dados.diasTrabalhados[chave];
     const valor = valorDoDia(ano, mes, dia);
+    const ehHoje = ano === hojeReal.getFullYear() && mes === hojeReal.getMonth() && dia === hojeReal.getDate();
 
     const div = document.createElement('div');
-    div.className = 'dia' + (trabalhado ? ' trabalhado' : '');
+    div.className = 'dia' + (trabalhado ? ' trabalhado' : '') + (ehHoje ? ' hoje' : '');
+    if (ehHoje) div.title = 'Hoje';
     div.innerHTML = `<span class="num">${dia}</span><span class="val">${valor > 0 ? formatarMoeda(valor).replace('R$ ', '') : ''}</span>`;
     div.addEventListener('click', () => {
       dados.diasTrabalhados[chave] = !dados.diasTrabalhados[chave];
@@ -336,6 +342,18 @@ function iniciar() {
   renderContas();
   renderCalendario();
   renderResumo();
+
+  // Se o app ficar aberto passando da meia-noite, o destaque de "hoje"
+  // precisa se mover sozinho. Verificamos a cada minuto (leve, não pesa)
+  // e só redesenhamos o calendário quando o dia realmente mudar.
+  let diaAtualConhecido = new Date().getDate();
+  setInterval(() => {
+    const diaAgora = new Date().getDate();
+    if (diaAgora !== diaAtualConhecido) {
+      diaAtualConhecido = diaAgora;
+      renderCalendario();
+    }
+  }, 60000);
 }
 
 iniciar();
