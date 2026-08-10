@@ -106,7 +106,28 @@ function renderContas() {
     });
     tdStatus.appendChild(select);
 
-    const tdRemover = document.createElement('td');
+    const tdAcoes = document.createElement('td');
+    const acoesWrap = document.createElement('div');
+    acoesWrap.className = 'acoes-conta';
+
+    const btnDup = document.createElement('button');
+    btnDup.className = 'btn-duplicar';
+    btnDup.textContent = '📋';
+    btnDup.setAttribute('aria-label', 'Duplicar conta');
+    btnDup.title = 'Duplicar conta';
+    btnDup.addEventListener('click', () => {
+      // Cria uma cópia logo abaixo da conta original, com "(cópia)" no nome
+      // pra ficar claro que é uma duplicata — útil pra contas fixas que se
+      // repetem todo mês, como aluguel ou luz.
+      const copia = {
+        nome: conta.nome ? conta.nome + ' (cópia)' : '',
+        valor: conta.valor,
+        status: conta.status
+      };
+      dados.contas.splice(i + 1, 0, copia);
+      salvar(); renderContas(); renderResumo();
+    });
+
     const btnRem = document.createElement('button');
     btnRem.className = 'btn-remover';
     btnRem.textContent = '✕';
@@ -117,12 +138,15 @@ function renderContas() {
       dados.contas.splice(i, 1);
       salvar(); renderContas(); renderResumo();
     });
-    tdRemover.appendChild(btnRem);
+
+    acoesWrap.appendChild(btnDup);
+    acoesWrap.appendChild(btnRem);
+    tdAcoes.appendChild(acoesWrap);
 
     tr.appendChild(tdNome);
     tr.appendChild(tdValor);
     tr.appendChild(tdStatus);
-    tr.appendChild(tdRemover);
+    tr.appendChild(tdAcoes);
     tbody.appendChild(tr);
   });
 }

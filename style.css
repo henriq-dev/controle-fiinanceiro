@@ -219,7 +219,7 @@ table {
 th:nth-child(1), td:nth-child(1) { min-width: 90px; }
 th:nth-child(2), td:nth-child(2) { min-width: 70px; }
 th:nth-child(3), td:nth-child(3) { min-width: 92px; }
-th:nth-child(4), td:nth-child(4) { width: 34px; }
+th:nth-child(4), td:nth-child(4) { width: 58px; }
 th {
   background: var(--azul);
   color: white;
@@ -257,6 +257,11 @@ select.status {
 select.status.pago { background: var(--verde); color: var(--verde-texto); }
 select.status.pendente { background: var(--vermelho); color: var(--vermelho-texto); }
 
+.acoes-conta {
+  display: flex;
+  gap: 2px;
+}
+
 .btn-remover {
   background: none;
   border: none;
@@ -264,10 +269,23 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   font-size: 18px;
   cursor: pointer;
   line-height: 1;
-  min-width: 40px;
+  min-width: 34px;
   min-height: 40px;
   touch-action: manipulation;
 }
+
+.btn-duplicar {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  min-width: 34px;
+  min-height: 40px;
+  touch-action: manipulation;
+  opacity: 0.75;
+}
+.btn-duplicar:hover, .btn-duplicar:active { opacity: 1; }
 
 .vazio-aviso {
   font-size: 13px;
