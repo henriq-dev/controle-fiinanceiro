@@ -61,6 +61,21 @@ function carregar() {
   }
 }
 
+// ===== Vencimento das contas =====
+// Retorna 'atrasada', 'proxima' (até 3 dias) ou 'ok', com base na data de hoje.
+// Só faz sentido avaliar isso para contas ainda Pendentes.
+function statusVencimento(vencStr) {
+  if (!vencStr) return null;
+  const [y, m, d] = vencStr.split('-').map(Number);
+  const dataVenc = new Date(y, m - 1, d);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const diffDias = Math.round((dataVenc - hoje) / 86400000);
+  if (diffDias < 0) return 'atrasada';
+  if (diffDias <= 3) return 'proxima';
+  return 'ok';
+}
+
 // ===== Renderização da tabela de contas =====
 function renderContas() {
   const tbody = document.getElementById('tabelaContas');
@@ -69,7 +84,18 @@ function renderContas() {
 
   aviso.style.display = dados.contas.length === 0 ? 'block' : 'none';
 
-  dados.contas.forEach((conta, i) => {
+  // Mostra as contas ordenadas por data de vencimento (mais próximas primeiro).
+  // Contas sem data ficam por último. O array original (dados.contas) não
+  // muda de ordem — só a exibição. Por isso usamos indexOf para achar a
+  // posição real ao editar/duplicar/remover.
+  const contasOrdenadas = [...dados.contas].sort((a, b) => {
+    if (!a.vencimento && !b.vencimento) return 0;
+    if (!a.vencimento) return 1;
+    if (!b.vencimento) return -1;
+    return a.vencimento.localeCompare(b.vencimento);
+  });
+
+  contasOrdenadas.forEach((conta) => {
     const tr = document.createElement('tr');
 
     const tdNome = document.createElement('td');
@@ -90,6 +116,25 @@ function renderContas() {
     inputValor.addEventListener('input', e => { conta.valor = parseFloat(e.target.value) || 0; salvar(); renderResumo(); });
     tdValor.appendChild(inputValor);
 
+    const tdVencimento = document.createElement('td');
+    const wrapVenc = document.createElement('div');
+    wrapVenc.className = 'venc-wrap';
+    const bolinha = document.createElement('span');
+    const sitVenc = conta.status === 'Pendente' ? statusVencimento(conta.vencimento) : null;
+    bolinha.className = 'venc-bolinha' + (sitVenc ? ' ' + sitVenc : '');
+    if (sitVenc === 'atrasada') bolinha.title = 'Vencida';
+    else if (sitVenc === 'proxima') bolinha.title = 'Vence em breve';
+    const inputVenc = document.createElement('input');
+    inputVenc.type = 'date';
+    inputVenc.value = conta.vencimento || '';
+    inputVenc.addEventListener('change', e => {
+      conta.vencimento = e.target.value;
+      salvar(); renderContas(); renderResumo();
+    });
+    wrapVenc.appendChild(bolinha);
+    wrapVenc.appendChild(inputVenc);
+    tdVencimento.appendChild(wrapVenc);
+
     const tdStatus = document.createElement('td');
     const select = document.createElement('select');
     select.className = 'status ' + (conta.status === 'Pago' ? 'pago' : 'pendente');
@@ -102,7 +147,7 @@ function renderContas() {
     select.addEventListener('change', e => {
       conta.status = e.target.value;
       select.className = 'status ' + (conta.status === 'Pago' ? 'pago' : 'pendente');
-      salvar(); renderResumo();
+      salvar(); renderContas(); renderResumo();
     });
     tdStatus.appendChild(select);
 
@@ -119,12 +164,14 @@ function renderContas() {
       // Cria uma cópia logo abaixo da conta original, com "(cópia)" no nome
       // pra ficar claro que é uma duplicata — útil pra contas fixas que se
       // repetem todo mês, como aluguel ou luz.
+      const posicaoReal = dados.contas.indexOf(conta);
       const copia = {
         nome: conta.nome ? conta.nome + ' (cópia)' : '',
         valor: conta.valor,
-        status: conta.status
+        status: conta.status,
+        vencimento: conta.vencimento || ''
       };
-      dados.contas.splice(i + 1, 0, copia);
+      dados.contas.splice(posicaoReal + 1, 0, copia);
       salvar(); renderContas(); renderResumo();
     });
 
@@ -135,7 +182,8 @@ function renderContas() {
     btnRem.addEventListener('click', () => {
       const nomeConta = conta.nome && conta.nome.trim() ? conta.nome : 'esta conta';
       if (!confirm(`Remover "${nomeConta}"?`)) return;
-      dados.contas.splice(i, 1);
+      const posicaoReal = dados.contas.indexOf(conta);
+      dados.contas.splice(posicaoReal, 1);
       salvar(); renderContas(); renderResumo();
     });
 
@@ -145,6 +193,7 @@ function renderContas() {
 
     tr.appendChild(tdNome);
     tr.appendChild(tdValor);
+    tr.appendChild(tdVencimento);
     tr.appendChild(tdStatus);
     tr.appendChild(tdAcoes);
     tbody.appendChild(tr);
@@ -268,7 +317,7 @@ document.getElementById('valorDomingo').addEventListener('input', e => {
   salvar(); renderCalendario(); renderResumo();
 });
 document.getElementById('btnAddConta').addEventListener('click', () => {
-  dados.contas.push({ nome: '', valor: 0, status: 'Pendente' });
+  dados.contas.push({ nome: '', valor: 0, status: 'Pendente', vencimento: '' });
   salvar(); renderContas(); renderResumo();
   const linhas = document.querySelectorAll('#tabelaContas tr');
   const ultimaLinha = linhas[linhas.length - 1];

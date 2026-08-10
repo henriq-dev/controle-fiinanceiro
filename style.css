@@ -218,8 +218,9 @@ table {
 }
 th:nth-child(1), td:nth-child(1) { min-width: 90px; }
 th:nth-child(2), td:nth-child(2) { min-width: 70px; }
-th:nth-child(3), td:nth-child(3) { min-width: 92px; }
-th:nth-child(4), td:nth-child(4) { width: 58px; }
+th:nth-child(3), td:nth-child(3) { min-width: 118px; }
+th:nth-child(4), td:nth-child(4) { min-width: 92px; }
+th:nth-child(5), td:nth-child(5) { width: 58px; }
 th {
   background: var(--azul);
   color: white;
@@ -256,6 +257,26 @@ select.status {
 }
 select.status.pago { background: var(--verde); color: var(--verde-texto); }
 select.status.pendente { background: var(--vermelho); color: var(--vermelho-texto); }
+
+/* ===== Vencimento ===== */
+.venc-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.venc-wrap input[type="date"] {
+  width: 100%;
+  min-width: 0;
+}
+.venc-bolinha {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: transparent;
+}
+.venc-bolinha.atrasada { background: var(--perigo); }
+.venc-bolinha.proxima { background: #d99a1b; }
 
 .acoes-conta {
   display: flex;
