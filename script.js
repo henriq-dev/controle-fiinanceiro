@@ -10,8 +10,9 @@ let dados = {
   valorSemana: 0,
   valorSabado: 0,
   valorDomingo: 0,
-  contas: [],          // <- começa vazia: cada pessoa cadastra as suas contas
-  diasTrabalhados: {}  // "YYYY-M-D": true
+  contas: [],                // <- começa vazia: cada pessoa cadastra as suas contas
+  diasTrabalhados: {},        // "YYYY-M-D": true
+  valoresPersonalizados: {}   // "YYYY-M-D": valor específico daquele dia (sobrescreve o padrão)
 };
 
 const hojeInicial = new Date();
@@ -206,6 +207,12 @@ function diaSemanaIndex(ano, mes, dia) {
 }
 
 function valorDoDia(ano, mes, dia) {
+  const chave = `${ano}-${mes}-${dia}`;
+  // Se esse dia tem um valor personalizado (ex: um bico que pagou diferente
+  // do normal), ele tem prioridade sobre o valor padrão do dia da semana.
+  if (dados.valoresPersonalizados[chave] !== undefined) {
+    return Number(dados.valoresPersonalizados[chave]) || 0;
+  }
   const idx = diaSemanaIndex(ano, mes, dia);
   if (idx === 0) return Number(dados.valorDomingo) || 0;
   if (idx === 6) return Number(dados.valorSabado) || 0;
@@ -246,9 +253,10 @@ function renderCalendario() {
     const trabalhado = !!dados.diasTrabalhados[chave];
     const valor = valorDoDia(ano, mes, dia);
     const ehHoje = ano === hojeReal.getFullYear() && mes === hojeReal.getMonth() && dia === hojeReal.getDate();
+    const personalizado = dados.valoresPersonalizados[chave] !== undefined;
 
     const div = document.createElement('div');
-    div.className = 'dia' + (trabalhado ? ' trabalhado' : '') + (ehHoje ? ' hoje' : '');
+    div.className = 'dia' + (trabalhado ? ' trabalhado' : '') + (ehHoje ? ' hoje' : '') + (personalizado ? ' personalizado' : '');
     if (ehHoje) div.title = 'Hoje';
     div.innerHTML = `<span class="num">${dia}</span><span class="val">${valor > 0 ? formatarMoeda(valor).replace('R$ ', '') : ''}</span>`;
     div.addEventListener('click', () => {
@@ -350,6 +358,87 @@ document.getElementById('btnTema').addEventListener('click', () => {
   dados.tema = dados.tema === 'dark' ? 'light' : 'dark';
   aplicarTema();
   salvar();
+});
+
+// ===== Modal: ajustar valor de dias específicos =====
+function renderListaDiasEditar() {
+  const lista = document.getElementById('listaDiasEditar');
+  const aviso = document.getElementById('avisoSemDias');
+  lista.innerHTML = '';
+
+  const ano = mesExibido.ano;
+  const mes = mesExibido.mes;
+  const totalDias = new Date(ano, mes + 1, 0).getDate();
+
+  const diasDoMes = [];
+  for (let dia = 1; dia <= totalDias; dia++) {
+    const chave = `${ano}-${mes}-${dia}`;
+    if (dados.diasTrabalhados[chave]) diasDoMes.push({ dia, chave });
+  }
+
+  aviso.style.display = diasDoMes.length === 0 ? 'block' : 'none';
+
+  diasDoMes.forEach(({ dia, chave }) => {
+    const linha = document.createElement('div');
+    linha.className = 'linha-dia-editar';
+
+    const nomeDia = new Date(ano, mes, dia).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+    const label = document.createElement('span');
+    label.className = 'linha-dia-label';
+    label.textContent = nomeDia;
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.01';
+    input.min = '0';
+    input.placeholder = '0,00';
+    const temPersonalizado = dados.valoresPersonalizados[chave] !== undefined;
+    input.value = temPersonalizado ? dados.valoresPersonalizados[chave] : '';
+    input.setAttribute('aria-label', 'Valor personalizado para ' + nomeDia);
+    // Mostra o valor padrão como dica, quando não há valor personalizado ainda
+    if (!temPersonalizado) {
+      input.placeholder = formatarMoeda(valorDoDia(ano, mes, dia)).replace('R$ ', '');
+    }
+    input.addEventListener('input', e => {
+      const texto = e.target.value;
+      if (texto === '') {
+        delete dados.valoresPersonalizados[chave];
+      } else {
+        dados.valoresPersonalizados[chave] = parseFloat(texto) || 0;
+      }
+      salvar();
+      renderCalendario();
+      renderResumo();
+    });
+
+    const btnReset = document.createElement('button');
+    btnReset.className = 'btn-reset-dia';
+    btnReset.textContent = 'padrão';
+    btnReset.title = 'Voltar a usar o valor padrão desse dia da semana';
+    btnReset.addEventListener('click', () => {
+      delete dados.valoresPersonalizados[chave];
+      salvar();
+      renderCalendario();
+      renderResumo();
+      renderListaDiasEditar();
+    });
+
+    linha.appendChild(label);
+    linha.appendChild(input);
+    linha.appendChild(btnReset);
+    lista.appendChild(linha);
+  });
+}
+
+document.getElementById('btnEditarDias').addEventListener('click', () => {
+  renderListaDiasEditar();
+  document.getElementById('modalDias').classList.add('aberto');
+});
+document.getElementById('btnFecharModalDias').addEventListener('click', () => {
+  document.getElementById('modalDias').classList.remove('aberto');
+});
+document.getElementById('modalDias').addEventListener('click', (e) => {
+  if (e.target.id === 'modalDias') document.getElementById('modalDias').classList.remove('aberto');
 });
 
 // ===== Instalar como app (PWA) =====

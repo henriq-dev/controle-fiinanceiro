@@ -159,8 +159,23 @@
         <button class="btn-icone" id="btnMesProximo" aria-label="Próximo mês">›</button>
       </div>
       <div class="calendario" id="calendario"></div>
+      <button class="btn-secundario" id="btnEditarDias" style="width:100%;">✏️ Ajustar valor de um dia específico</button>
     </section>
   </main>
+
+  <!-- Modal para editar o valor de dias específicos (ex: um bico que pagou diferente do normal) -->
+  <div class="modal-fundo" id="modalDias">
+    <div class="modal-caixa">
+      <div class="modal-titulo">Ajustar valores dos dias</div>
+      <div class="modal-texto">
+        Só aparecem aqui os dias marcados como trabalhados no mês em exibição.
+        Mude o valor de um dia específico sem afetar os outros.
+      </div>
+      <div id="listaDiasEditar"></div>
+      <p class="vazio-aviso" id="avisoSemDias">Nenhum dia trabalhado neste mês ainda.</p>
+      <button class="btn-secundario" id="btnFecharModalDias" style="width:100%;">Fechar</button>
+    </div>
+  </div>
 
   <p class="status-save" id="statusSalvo"></p>
 </div>
