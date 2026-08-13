@@ -33,10 +33,16 @@ Repositório: GitHub (controle-fiinanceiro)
    - "Escolher arquivo de backup" importa e substitui os dados atuais (com confirmação)
    - Protegido contra arquivo inválido (mostra aviso, não quebra o app)
 
-## ⬜ v1.3.0 — Planejado
-- Botão "Fechar mês" (arquiva contas pagas)
-- Categorias nas contas
-- Gráfico visual (barra: salário vs. gastos vs. sobra)
+## 🔄 v1.3.0 — Em andamento
+1. ✅ **Fechar mês** — feito e testado
+   - Botão "📁 Fechar mês" arquiva um resumo no histórico e reseta as contas para "Pendente"
+   - Vencimentos avançam automaticamente 1 mês
+   - Botão "🕓 Histórico" mostra o resumo de cada mês fechado
+2. ⬜ Categorias nas contas
+3. ⬜ Gráfico visual (barra: salário vs. gastos vs. sobra)
+
+## 💡 Backlog (ideias, sem versão definida ainda)
+- Lembrete de backup: avisar dentro do app quando fizer tempo (~15 dias) desde o último export, pra ajudar usuários leigos que podem esquecer de fazer backup manual
 
 ## ⬜ v2.0.0 — Planejado (grande mudança)
 - Login / salvar na nuvem — precisa de serviço externo (ex: Firebase), foge do "só vanilla". Discutir arquitetura antes de começar.
@@ -46,4 +52,4 @@ Repositório: GitHub (controle-fiinanceiro)
 ## Como retomar em uma conversa nova
 1. Abra uma conversa nova dentro deste mesmo Projeto (a memória do projeto ajuda a manter o contexto).
 2. Se quiser, anexe os arquivos atuais do repositório (`index.html`, `style.css`, `script.js`) pra eu conferir o estado exato.
-3. Diga: "Vamos continuar a v1.3.0" — próximos itens: botão "Fechar mês", categorias nas contas, gráfico visual.
+3. Diga: "Vamos continuar a v1.3.0" — próximos itens: categorias nas contas, gráfico visual.
