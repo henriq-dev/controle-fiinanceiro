@@ -218,9 +218,10 @@ table {
 }
 th:nth-child(1), td:nth-child(1) { min-width: 90px; }
 th:nth-child(2), td:nth-child(2) { min-width: 70px; }
-th:nth-child(3), td:nth-child(3) { min-width: 118px; }
-th:nth-child(4), td:nth-child(4) { min-width: 92px; }
-th:nth-child(5), td:nth-child(5) { width: 58px; }
+th:nth-child(3), td:nth-child(3) { min-width: 110px; }
+th:nth-child(4), td:nth-child(4) { min-width: 118px; }
+th:nth-child(5), td:nth-child(5) { min-width: 92px; }
+th:nth-child(6), td:nth-child(6) { width: 58px; }
 th {
   background: var(--azul);
   color: white;
@@ -257,6 +258,25 @@ select.status {
 }
 select.status.pago { background: var(--verde); color: var(--verde-texto); }
 select.status.pendente { background: var(--vermelho); color: var(--vermelho-texto); }
+
+/* ===== Categoria ===== */
+.categoria-select {
+  width: 100%;
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid var(--borda);
+  font-family: inherit;
+  font-size: 12px;
+  background: var(--cinza);
+  color: var(--texto);
+}
+.categoria-select[data-categoria="Moradia"] { border-left: 4px solid #4c78d9; }
+.categoria-select[data-categoria="Transporte"] { border-left: 4px solid #9b6bd6; }
+.categoria-select[data-categoria="Alimentação"] { border-left: 4px solid #e08a2c; }
+.categoria-select[data-categoria="Saúde"] { border-left: 4px solid #e05c6f; }
+.categoria-select[data-categoria="Lazer"] { border-left: 4px solid #3aa65c; }
+.categoria-select[data-categoria="Educação"] { border-left: 4px solid #2ea8a8; }
+.categoria-select[data-categoria="Outros"] { border-left: 4px solid #999999; }
 
 /* ===== Vencimento ===== */
 .venc-wrap {
@@ -368,6 +388,60 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   margin-top: 0;
   font-size: 13px;
   padding: 10px 8px;
+}
+
+/* ===== Resumo por categoria ===== */
+.resumo-categorias {
+  margin-top: 14px;
+}
+.resumo-categorias-titulo {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--texto-secundario);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+}
+.cat-barra-linha {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.cat-barra-label {
+  width: 78px;
+  flex-shrink: 0;
+  color: var(--texto-secundario);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cat-barra-trilho {
+  flex: 1;
+  background: var(--cinza);
+  border-radius: 4px;
+  height: 10px;
+  overflow: hidden;
+}
+.cat-barra-preenchida {
+  height: 100%;
+  border-radius: 4px;
+  min-width: 3px;
+  background: #999999;
+}
+.cat-barra-preenchida[data-categoria="Moradia"] { background: #4c78d9; }
+.cat-barra-preenchida[data-categoria="Transporte"] { background: #9b6bd6; }
+.cat-barra-preenchida[data-categoria="Alimentação"] { background: #e08a2c; }
+.cat-barra-preenchida[data-categoria="Saúde"] { background: #e05c6f; }
+.cat-barra-preenchida[data-categoria="Lazer"] { background: #3aa65c; }
+.cat-barra-preenchida[data-categoria="Educação"] { background: #2ea8a8; }
+.cat-barra-valor {
+  width: 68px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--texto);
+  font-weight: 600;
 }
 
 .item-historico {

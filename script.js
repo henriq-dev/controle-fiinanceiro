@@ -85,6 +85,10 @@ function statusVencimento(vencStr) {
   return 'ok';
 }
 
+// Categorias fixas, cada uma com uma cor própria (definida no CSS via
+// data-categoria). "Sem categoria" fica de fora do dropdown como padrão vazio.
+const CATEGORIAS = ['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Lazer', 'Educação', 'Outros'];
+
 // ===== Renderização da tabela de contas =====
 function renderContas() {
   const tbody = document.getElementById('tabelaContas');
@@ -124,6 +128,27 @@ function renderContas() {
     inputValor.value = (Number(conta.valor) === 0) ? '' : conta.valor;
     inputValor.addEventListener('input', e => { conta.valor = parseFloat(e.target.value) || 0; salvar(); renderResumo(); });
     tdValor.appendChild(inputValor);
+
+    const tdCategoria = document.createElement('td');
+    const selectCat = document.createElement('select');
+    selectCat.className = 'categoria-select';
+    selectCat.dataset.categoria = conta.categoria || '';
+    const optVazia = document.createElement('option');
+    optVazia.value = ''; optVazia.textContent = 'Sem categoria';
+    if (!conta.categoria) optVazia.selected = true;
+    selectCat.appendChild(optVazia);
+    CATEGORIAS.forEach(cat => {
+      const o = document.createElement('option');
+      o.value = cat; o.textContent = cat;
+      if (conta.categoria === cat) o.selected = true;
+      selectCat.appendChild(o);
+    });
+    selectCat.addEventListener('change', e => {
+      conta.categoria = e.target.value;
+      selectCat.dataset.categoria = conta.categoria;
+      salvar(); renderResumo();
+    });
+    tdCategoria.appendChild(selectCat);
 
     const tdVencimento = document.createElement('td');
     const wrapVenc = document.createElement('div');
@@ -178,7 +203,8 @@ function renderContas() {
         nome: conta.nome ? conta.nome + ' (cópia)' : '',
         valor: conta.valor,
         status: conta.status,
-        vencimento: conta.vencimento || ''
+        vencimento: conta.vencimento || '',
+        categoria: conta.categoria || ''
       };
       dados.contas.splice(posicaoReal + 1, 0, copia);
       salvar(); renderContas(); renderResumo();
@@ -202,6 +228,7 @@ function renderContas() {
 
     tr.appendChild(tdNome);
     tr.appendChild(tdValor);
+    tr.appendChild(tdCategoria);
     tr.appendChild(tdVencimento);
     tr.appendChild(tdStatus);
     tr.appendChild(tdAcoes);
@@ -313,6 +340,37 @@ function renderResumo() {
   // dá pra ver de longe que algo precisa de atenção, sem ler o número.
   elSobra.closest('.resumo-item').classList.toggle('negativo', sobra < 0);
   document.getElementById('totalGeralRodape').textContent = formatarMoeda(totalContas);
+  renderResumoCategorias();
+}
+
+// ===== Resumo por categoria =====
+// Mostra o total gasto em cada categoria usada, com uma barrinha proporcional
+// ao maior valor — só aparece quando pelo menos uma conta tem categoria.
+function renderResumoCategorias() {
+  const container = document.getElementById('resumoCategorias');
+  const porCategoria = {};
+  dados.contas.forEach(c => {
+    if (!c.categoria) return;
+    porCategoria[c.categoria] = (porCategoria[c.categoria] || 0) + (Number(c.valor) || 0);
+  });
+
+  const entradas = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]);
+  if (entradas.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const maior = Math.max(...entradas.map(e => e[1]));
+  container.innerHTML = '<div class="resumo-categorias-titulo">Por categoria</div>' +
+    entradas.map(([cat, valor]) => `
+      <div class="cat-barra-linha">
+        <span class="cat-barra-label">${cat}</span>
+        <div class="cat-barra-trilho">
+          <div class="cat-barra-preenchida" data-categoria="${cat}" style="width:${maior > 0 ? (valor / maior) * 100 : 0}%"></div>
+        </div>
+        <span class="cat-barra-valor">${formatarMoeda(valor)}</span>
+      </div>
+    `).join('');
 }
 
 // ===== Fechar mês =====
@@ -420,7 +478,7 @@ document.getElementById('valorDomingo').addEventListener('input', e => {
   salvar(); renderCalendario(); renderResumo();
 });
 document.getElementById('btnAddConta').addEventListener('click', () => {
-  dados.contas.push({ nome: '', valor: 0, status: 'Pendente', vencimento: '' });
+  dados.contas.push({ nome: '', valor: 0, status: 'Pendente', vencimento: '', categoria: '' });
   salvar(); renderContas(); renderResumo();
   const linhas = document.querySelectorAll('#tabelaContas tr');
   const ultimaLinha = linhas[linhas.length - 1];

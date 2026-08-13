@@ -38,7 +38,12 @@ Repositório: GitHub (controle-fiinanceiro)
    - Botão "📁 Fechar mês" arquiva um resumo no histórico e reseta as contas para "Pendente"
    - Vencimentos avançam automaticamente 1 mês
    - Botão "🕓 Histórico" mostra o resumo de cada mês fechado
-2. ⬜ Categorias nas contas
+2. ✅ **Categorias nas contas** — feito e testado
+   - Dropdown de categoria em cada conta (Moradia, Transporte, Alimentação, Saúde, Lazer, Educação, Outros)
+   - Cada categoria tem uma cor própria (borda colorida no dropdown)
+   - Resumo "Por categoria" abaixo da lista: barra proporcional + valor, ordenado do maior gasto pro menor
+   - Só aparece quando pelo menos uma conta tem categoria definida
+   - Categoria é mantida ao duplicar conta e ao fechar o mês
 3. ⬜ Gráfico visual (barra: salário vs. gastos vs. sobra)
 
 ## 💡 Backlog (ideias, sem versão definida ainda)
