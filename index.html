@@ -161,7 +161,25 @@
         <span>Total geral</span>
         <span id="totalGeralRodape">R$ 0,00</span>
       </div>
+      <div class="acoes-mes">
+        <button class="btn-secundario" id="btnFecharMes">📁 Fechar mês</button>
+        <button class="btn-secundario" id="btnHistorico">🕓 Histórico</button>
+      </div>
     </section>
+
+    <!-- Modal de histórico: resumo dos meses já fechados -->
+    <div class="modal-fundo" id="modalHistorico">
+      <div class="modal-caixa">
+        <div class="modal-titulo">🕓 Histórico de meses</div>
+        <div class="modal-texto">
+          Resumo de cada mês fechado. As contas de cada mês continuam guardadas aqui,
+          mesmo depois de "Fechar mês" resetar a lista atual.
+        </div>
+        <div id="listaHistorico"></div>
+        <p class="vazio-aviso" id="avisoSemHistorico">Nenhum mês fechado ainda.</p>
+        <button class="btn-secundario" id="btnFecharModalHistorico" style="width:100%;">Fechar</button>
+      </div>
+    </div>
 
     <!-- Diárias: valor por dia da semana + calendário para marcar os dias trabalhados -->
     <section class="card" aria-labelledby="tituloDiarias">

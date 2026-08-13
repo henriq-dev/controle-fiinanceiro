@@ -12,11 +12,19 @@ let dados = {
   valorDomingo: 0,
   contas: [],                // <- começa vazia: cada pessoa cadastra as suas contas
   diasTrabalhados: {},        // "YYYY-M-D": true
-  valoresPersonalizados: {}   // "YYYY-M-D": valor específico daquele dia (sobrescreve o padrão)
+  valoresPersonalizados: {},  // "YYYY-M-D": valor específico daquele dia (sobrescreve o padrão)
+  historicoMeses: []          // meses já fechados, com o resumo e a lista de contas de cada um
 };
 
 const hojeInicial = new Date();
 let mesExibido = { ano: hojeInicial.getFullYear(), mes: hojeInicial.getMonth() };
+
+// Deixa só a primeira letra maiúscula (não usamos CSS text-transform aqui
+// porque "capitalize" deixaria toda palavra maiúscula, incluindo o "de"
+// de "agosto de 2026" — viraria "Agosto De 2026", errado em português).
+function capitalizarPrimeira(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
 // ===== Utilitário: formata número para moeda brasileira =====
 function formatarMoeda(v) {
@@ -229,7 +237,7 @@ function renderCalendario() {
   // mesmo que a pessoa deixe o app aberto e passe da meia-noite.
   const hojeReal = new Date();
 
-  const nomeMes = new Date(ano, mes, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const nomeMes = capitalizarPrimeira(new Date(ano, mes, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
   document.getElementById('rotuloMes').textContent = nomeMes;
 
   ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].forEach(letra => {
@@ -306,6 +314,93 @@ function renderResumo() {
   elSobra.closest('.resumo-item').classList.toggle('negativo', sobra < 0);
   document.getElementById('totalGeralRodape').textContent = formatarMoeda(totalContas);
 }
+
+// ===== Fechar mês =====
+// Arquiva um resumo do mês atual (com a lista de contas como estavam) e
+// prepara a lista para o mês seguinte: todas as contas voltam para
+// "Pendente" (pensado para contas fixas, tipo aluguel e luz, que se repetem
+// todo mês) e, se tinham data de vencimento, essa data avança 1 mês.
+function avancarUmMes(dataStr) {
+  const [y, m, d] = dataStr.split('-').map(Number);
+  const prox = new Date(y, m - 1 + 1, d);
+  const yy = prox.getFullYear();
+  const mm = String(prox.getMonth() + 1).padStart(2, '0');
+  const dd = String(prox.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+function fecharMes() {
+  if (dados.contas.length === 0) {
+    alert('Não há contas cadastradas para fechar o mês.');
+    return;
+  }
+
+  const nomeMes = capitalizarPrimeira(new Date(mesExibido.ano, mesExibido.mes, 1)
+    .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
+  const totalContas = dados.contas.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const diarias = totalDiarias();
+  const salario = Number(dados.salario) || 0;
+  const sobra = (salario + diarias) - totalContas;
+
+  const confirmar = confirm(
+    `Fechar ${nomeMes}?\n\nTotal de contas: ${formatarMoeda(totalContas)}\nSobra do mês: ${formatarMoeda(sobra)}\n\n` +
+    `Isso guarda esse resumo no histórico e todas as contas voltam para "Pendente" (prontas para o próximo mês).`
+  );
+  if (!confirmar) return;
+
+  dados.historicoMeses = dados.historicoMeses || [];
+  dados.historicoMeses.unshift({
+    mesLabel: nomeMes,
+    fechadoEm: new Date().toISOString(),
+    totalContas, diarias, salario, sobra,
+    contas: JSON.parse(JSON.stringify(dados.contas)) // cópia independente, não muda mais depois
+  });
+
+  dados.contas.forEach(conta => {
+    conta.status = 'Pendente';
+    if (conta.vencimento) conta.vencimento = avancarUmMes(conta.vencimento);
+  });
+
+  salvar();
+  renderContas();
+  renderResumo();
+  alert('Mês fechado! As contas estão prontas para o próximo mês.');
+}
+
+document.getElementById('btnFecharMes').addEventListener('click', fecharMes);
+
+// ===== Histórico de meses fechados =====
+function renderHistorico() {
+  const lista = document.getElementById('listaHistorico');
+  const aviso = document.getElementById('avisoSemHistorico');
+  const historico = dados.historicoMeses || [];
+  lista.innerHTML = '';
+  aviso.style.display = historico.length === 0 ? 'block' : 'none';
+
+  historico.forEach(mes => {
+    const item = document.createElement('div');
+    item.className = 'item-historico';
+    item.innerHTML = `
+      <strong>${mes.mesLabel}</strong>
+      <div class="item-historico-linha"><span>Total de contas</span><span>${formatarMoeda(mes.totalContas)}</span></div>
+      <div class="item-historico-linha"><span>Diárias</span><span>${formatarMoeda(mes.diarias)}</span></div>
+      <div class="item-historico-linha"><span>Sobra do mês</span><span>${formatarMoeda(mes.sobra)}</span></div>
+      <div class="item-historico-linha"><span>Contas cadastradas</span><span>${mes.contas.length}</span></div>
+    `;
+    lista.appendChild(item);
+  });
+}
+
+document.getElementById('btnHistorico').addEventListener('click', () => {
+  renderHistorico();
+  document.getElementById('modalHistorico').classList.add('aberto');
+});
+document.getElementById('btnFecharModalHistorico').addEventListener('click', () => {
+  document.getElementById('modalHistorico').classList.remove('aberto');
+});
+document.getElementById('modalHistorico').addEventListener('click', (e) => {
+  if (e.target.id === 'modalHistorico') document.getElementById('modalHistorico').classList.remove('aberto');
+});
 
 // ===== Eventos dos campos fixos =====
 document.getElementById('salario').addEventListener('input', e => {
@@ -499,7 +594,7 @@ document.getElementById('inputImportarBackup').addEventListener('change', (e) =>
     // (sem algum campo novo), o app não quebra por falta desse campo.
     dados = Object.assign({
       tema: 'light', salario: 0, valorSemana: 0, valorSabado: 0, valorDomingo: 0,
-      contas: [], diasTrabalhados: {}, valoresPersonalizados: {}
+      contas: [], diasTrabalhados: {}, valoresPersonalizados: {}, historicoMeses: []
     }, novosDados);
     salvar();
     aplicarDadosNaTela();

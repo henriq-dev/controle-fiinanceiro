@@ -358,6 +358,41 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
 }
 .linha-total span:last-child { font-weight: bold; }
 
+.acoes-mes {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.acoes-mes .btn-secundario {
+  flex: 1;
+  margin-top: 0;
+  font-size: 13px;
+  padding: 10px 8px;
+}
+
+.item-historico {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.item-historico strong {
+  display: block;
+  color: var(--azul-texto-forte);
+  margin-bottom: 6px;
+}
+.item-historico-linha {
+  display: flex;
+  justify-content: space-between;
+  color: var(--texto-secundario);
+  padding: 2px 0;
+}
+.item-historico-linha span:last-child {
+  color: var(--texto);
+  font-weight: 600;
+}
+
 /* ===== Diárias ===== */
 .diaria-config {
   display: grid;
@@ -395,7 +430,6 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   color: var(--texto);
   min-width: 130px;
   text-align: center;
-  text-transform: capitalize;
 }
 
 .calendario {
