@@ -220,7 +220,7 @@ th:nth-child(1), td:nth-child(1) { min-width: 90px; }
 th:nth-child(2), td:nth-child(2) { min-width: 70px; }
 th:nth-child(3), td:nth-child(3) { min-width: 110px; }
 th:nth-child(4), td:nth-child(4) { min-width: 118px; }
-th:nth-child(5), td:nth-child(5) { min-width: 92px; }
+th:nth-child(5), td:nth-child(5) { min-width: 108px; }
 th:nth-child(6), td:nth-child(6) { width: 58px; }
 th {
   background: var(--azul);
