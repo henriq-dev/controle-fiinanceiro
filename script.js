@@ -441,6 +441,77 @@ document.getElementById('modalDias').addEventListener('click', (e) => {
   if (e.target.id === 'modalDias') document.getElementById('modalDias').classList.remove('aberto');
 });
 
+// ===== Backup: exportar e importar em .json =====
+document.getElementById('btnBackup').addEventListener('click', () => {
+  document.getElementById('statusImportacao').textContent = '';
+  document.getElementById('modalBackup').classList.add('aberto');
+});
+document.getElementById('btnFecharModalBackup').addEventListener('click', () => {
+  document.getElementById('modalBackup').classList.remove('aberto');
+});
+document.getElementById('modalBackup').addEventListener('click', (e) => {
+  if (e.target.id === 'modalBackup') document.getElementById('modalBackup').classList.remove('aberto');
+});
+
+document.getElementById('btnExportarBackup').addEventListener('click', () => {
+  // Gera um arquivo .json com todos os dados atuais e dispara o download.
+  // Não usamos nenhuma biblioteca: criamos um link temporário e clicamos nele
+  // via JavaScript — é assim que se baixa um arquivo gerado na hora, sem servidor.
+  const conteudo = JSON.stringify(dados, null, 2);
+  const blob = new Blob([conteudo], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `controle-financeiro-backup-${hoje}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btnImportarBackup').addEventListener('click', () => {
+  document.getElementById('inputImportarBackup').click();
+});
+
+document.getElementById('inputImportarBackup').addEventListener('change', (e) => {
+  const arquivo = e.target.files[0];
+  const statusEl = document.getElementById('statusImportacao');
+  if (!arquivo) return;
+
+  const leitor = new FileReader();
+  leitor.onload = () => {
+    let novosDados;
+    try {
+      novosDados = JSON.parse(leitor.result);
+    } catch (err) {
+      statusEl.textContent = '⚠️ Esse arquivo não é um backup válido.';
+      return;
+    }
+    // Confirmação de segurança: importar substitui o que está salvo agora.
+    if (!confirm('Isso vai substituir os dados atuais deste aparelho pelos do arquivo. Continuar?')) {
+      e.target.value = '';
+      return;
+    }
+    // Mantém a estrutura padrão como base e sobrescreve só com o que veio no
+    // arquivo — assim, se o backup for de uma versão mais antiga do app
+    // (sem algum campo novo), o app não quebra por falta desse campo.
+    dados = Object.assign({
+      tema: 'light', salario: 0, valorSemana: 0, valorSabado: 0, valorDomingo: 0,
+      contas: [], diasTrabalhados: {}, valoresPersonalizados: {}
+    }, novosDados);
+    salvar();
+    aplicarDadosNaTela();
+    statusEl.textContent = '✅ Backup importado com sucesso!';
+    e.target.value = '';
+  };
+  leitor.onerror = () => {
+    statusEl.textContent = '⚠️ Não foi possível ler o arquivo.';
+  };
+  leitor.readAsText(arquivo);
+});
+
 // ===== Instalar como app (PWA) =====
 // O navegador dispara "beforeinstallprompt" quando o site cumpre os requisitos
 // de instalação (manifest.json + ícones + service worker). Guardamos esse
@@ -504,8 +575,7 @@ function preencherCampoNumerico(id, valor) {
 }
 
 // ===== Inicialização =====
-function iniciar() {
-  carregar();
+function aplicarDadosNaTela() {
   aplicarTema();
   preencherCampoNumerico('salario', dados.salario);
   preencherCampoNumerico('valorSemana', dados.valorSemana);
@@ -514,6 +584,11 @@ function iniciar() {
   renderContas();
   renderCalendario();
   renderResumo();
+}
+
+function iniciar() {
+  carregar();
+  aplicarDadosNaTela();
 
   // Se o app ficar aberto passando da meia-noite, o destaque de "hoje"
   // precisa se mover sozinho. Verificamos a cada minuto (leve, não pesa)

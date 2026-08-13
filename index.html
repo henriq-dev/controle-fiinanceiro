@@ -43,10 +43,37 @@
       </div>
     </div>
     <div class="botoes-topo">
+      <button class="btn-icone" id="btnBackup" title="Backup dos dados" aria-label="Backup dos dados">💾</button>
       <button class="btn-icone" id="btnInstalar" title="Instalar como app" aria-label="Instalar como app">📲</button>
       <button class="btn-icone" id="btnTema" title="Alternar tema claro/escuro" aria-label="Alternar tema">🌙</button>
     </div>
   </header>
+
+  <!-- Modal de backup: exportar os dados para um arquivo .json (guarda uma cópia
+       fora do navegador) e importar esse arquivo de volta, em qualquer aparelho. -->
+  <div class="modal-fundo" id="modalBackup">
+    <div class="modal-caixa">
+      <div class="modal-titulo">💾 Backup dos dados</div>
+      <div class="modal-texto">
+        Seus dados ficam salvos só neste navegador. Se limpar o cache, trocar de
+        aparelho ou desinstalar o app, você perde tudo — a menos que tenha um backup.
+      </div>
+
+      <button class="btn-add" id="btnExportarBackup" style="width:100%;">⬇️ Baixar backup (.json)</button>
+
+      <div class="modal-secao">
+        <strong>Restaurar um backup</strong>
+        <p class="modal-texto" style="margin-top:6px; margin-bottom:10px;">
+          Isso substitui os dados atuais deste aparelho pelos dados do arquivo escolhido.
+        </p>
+        <input type="file" id="inputImportarBackup" accept="application/json,.json" style="display:none;">
+        <button class="btn-secundario" id="btnImportarBackup" style="width:100%;">⬆️ Escolher arquivo de backup</button>
+      </div>
+
+      <p class="status-save" id="statusImportacao" style="text-align:left; margin-top:4px;"></p>
+      <button class="btn-secundario" id="btnFecharModalBackup" style="width:100%;">Fechar</button>
+    </div>
+  </div>
 
   <!-- Modal de instalação: usa o prompt nativo quando disponível (Android/desktop)
        e cai para instruções manuais quando o navegador não oferece esse recurso (iPhone/Safari) -->
