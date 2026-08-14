@@ -444,6 +444,46 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   font-weight: 600;
 }
 
+/* ===== Gráfico: entradas vs. gastos vs. sobra ===== */
+.graf-barra-linha {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.graf-barra-linha:last-child { margin-bottom: 0; }
+.graf-barra-label {
+  width: 64px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--texto-secundario);
+}
+.graf-barra-trilho {
+  flex: 1;
+  background: var(--cinza);
+  border-radius: 6px;
+  height: 16px;
+  overflow: hidden;
+}
+.graf-barra-preenchida {
+  height: 100%;
+  border-radius: 6px;
+  min-width: 3px;
+  transition: width 0.2s;
+}
+.graf-entradas { background: var(--teal); }
+.graf-gastos { background: var(--perigo); }
+.graf-sobra { background: var(--azul); }
+.graf-sobra-negativa { background: var(--perigo); }
+.graf-barra-valor {
+  width: 84px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--texto);
+}
+
 .item-historico {
   border: 1px solid var(--borda);
   border-radius: 8px;

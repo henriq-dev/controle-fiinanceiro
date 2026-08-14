@@ -341,6 +341,46 @@ function renderResumo() {
   elSobra.closest('.resumo-item').classList.toggle('negativo', sobra < 0);
   document.getElementById('totalGeralRodape').textContent = formatarMoeda(totalContas);
   renderResumoCategorias();
+  renderGrafico();
+}
+
+// ===== Gráfico: entradas vs. gastos vs. sobra =====
+// Barras simples, na mesma linguagem visual do resumo por categoria.
+// Não usa nenhuma biblioteca de gráficos — é só HTML/CSS com a largura da
+// barra calculada em proporção ao maior valor dos três.
+function renderGrafico() {
+  const totalContas = dados.contas.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const diarias = totalDiarias();
+  const salario = Number(dados.salario) || 0;
+  const entradas = salario + diarias;
+  const sobra = entradas - totalContas;
+
+  const container = document.getElementById('graficoResumo');
+  const aviso = document.getElementById('avisoGraficoVazio');
+
+  if (entradas === 0 && totalContas === 0) {
+    container.innerHTML = '';
+    aviso.style.display = 'block';
+    return;
+  }
+  aviso.style.display = 'none';
+
+  const maior = Math.max(entradas, totalContas, Math.abs(sobra), 1);
+  const linhas = [
+    { label: 'Entradas', valor: entradas, classe: 'graf-entradas' },
+    { label: 'Gastos', valor: totalContas, classe: 'graf-gastos' },
+    { label: 'Sobra', valor: sobra, classe: sobra < 0 ? 'graf-sobra-negativa' : 'graf-sobra' }
+  ];
+
+  container.innerHTML = linhas.map(l => `
+    <div class="graf-barra-linha">
+      <span class="graf-barra-label">${l.label}</span>
+      <div class="graf-barra-trilho">
+        <div class="graf-barra-preenchida ${l.classe}" style="width:${Math.min(100, (Math.abs(l.valor) / maior) * 100)}%"></div>
+      </div>
+      <span class="graf-barra-valor">${formatarMoeda(l.valor)}</span>
+    </div>
+  `).join('');
 }
 
 // ===== Resumo por categoria =====
