@@ -43,11 +43,47 @@
       </div>
     </div>
     <div class="botoes-topo">
+      <button class="btn-icone" id="btnConta" title="Minha conta" aria-label="Minha conta">👤</button>
       <button class="btn-icone" id="btnBackup" title="Backup dos dados" aria-label="Backup dos dados">💾</button>
       <button class="btn-icone" id="btnInstalar" title="Instalar como app" aria-label="Instalar como app">📲</button>
       <button class="btn-icone" id="btnTema" title="Alternar tema claro/escuro" aria-label="Alternar tema">🌙</button>
     </div>
   </header>
+
+  <!-- Modal de conta: login/cadastro com Firebase. Usar o app SEM login continua
+       funcionando 100% normal, só com os dados salvos neste aparelho (localStorage).
+       Fazer login soma a isso uma cópia sincronizada na nuvem (Firestore), acessível
+       de qualquer aparelho em que você logar com o mesmo e-mail. -->
+  <div class="modal-fundo" id="modalConta">
+    <div class="modal-caixa">
+      <div class="modal-titulo">👤 Minha conta</div>
+
+      <!-- Mostrado quando NINGUÉM está logado -->
+      <div id="contaDeslogado">
+        <div class="modal-texto">
+          Faça login para sincronizar seus dados entre vários aparelhos. Sem login,
+          o app continua funcionando normal, só salvando neste aparelho.
+        </div>
+        <label for="contaEmail" class="campo-label">E-mail</label>
+        <input type="email" id="contaEmail" class="campo-conta" placeholder="voce@exemplo.com" autocomplete="email">
+        <label for="contaSenha" class="campo-label">Senha</label>
+        <input type="password" id="contaSenha" class="campo-conta" placeholder="mínimo 6 caracteres" autocomplete="current-password">
+        <p class="status-save" id="statusConta" style="text-align:left;"></p>
+        <button class="btn-add" id="btnEntrar" style="width:100%;">Entrar</button>
+        <button class="btn-secundario" id="btnCriarConta" style="width:100%;">Criar conta nova</button>
+      </div>
+
+      <!-- Mostrado quando alguém JÁ está logado -->
+      <div id="contaLogado" style="display:none;">
+        <div class="modal-texto">
+          Logado como <strong id="contaEmailAtual"></strong>. Seus dados estão sincronizados com a nuvem.
+        </div>
+        <button class="btn-secundario" id="btnSair" style="width:100%;">Sair da conta</button>
+      </div>
+
+      <button class="btn-secundario" id="btnFecharModalConta" style="width:100%;">Fechar</button>
+    </div>
+  </div>
 
   <!-- Modal de backup: exportar os dados para um arquivo .json (guarda uma cópia
        fora do navegador) e importar esse arquivo de volta, em qualquer aparelho. -->

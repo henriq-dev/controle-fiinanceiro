@@ -1,3 +1,49 @@
+// ===== Firebase: login e sincronização na nuvem =====
+// IMPORTANTE: carregamos o Firebase SOB DEMANDA (só quando a pessoa clica em
+// "Conta" ou tenta logar), não no topo do arquivo. Se colocássemos um
+// "import" fixo aqui em cima e o Firebase não respondesse (sem internet,
+// bloqueador de anúncios, CDN fora do ar), o app INTEIRO travaria — nem as
+// funções que não têm nada a ver com login funcionariam. Carregando por
+// demanda, com um limite de tempo, o resto do app nunca depende disso.
+const firebaseConfig = {
+  apiKey: "AIzaSyBVKTehsMqtBaHoOk_1UPGDMBqDKgKcWQo",
+  authDomain: "controle-financeiro-46381.firebaseapp.com",
+  projectId: "controle-financeiro-46381",
+  storageBucket: "controle-financeiro-46381.firebasestorage.app",
+  messagingSenderId: "87406858270",
+  appId: "1:87406858270:web:eb991ce038179ab0c2de0f"
+};
+
+let _firebasePromise = null;
+// Corre uma promessa contra um cronômetro: se o Firebase não responder dentro
+// do tempo, desistimos (rejeitamos) em vez de ficar esperando pra sempre.
+function comLimiteDeTempo(promessa, ms) {
+  return Promise.race([
+    promessa,
+    new Promise((_, rejeitar) => setTimeout(() => rejeitar(new Error('tempo esgotado')), ms))
+  ]);
+}
+
+function carregarFirebase() {
+  if (_firebasePromise) return _firebasePromise; // já carregado (ou carregando) — reaproveita
+  _firebasePromise = (async () => {
+    const [appMod, authMod, storeMod] = await comLimiteDeTempo(Promise.all([
+      import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js'),
+      import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js'),
+      import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js')
+    ]), 8000);
+
+    const app = appMod.initializeApp(firebaseConfig);
+    const auth = authMod.getAuth(app);
+    const db = storeMod.getFirestore(app);
+    return { auth, db, authMod, storeMod };
+  })();
+  // Se der erro, "esquece" a tentativa — assim um próximo clique tenta de novo
+  // (em vez de ficar preso num erro antigo pra sempre).
+  _firebasePromise.catch(() => { _firebasePromise = null; });
+  return _firebasePromise;
+}
+
 // ===== Estado da aplicação =====
 // Cada pessoa que abrir este site em seu próprio navegador terá os
 // seus próprios dados, guardados localmente no aparelho (localStorage).
@@ -34,6 +80,9 @@ function formatarMoeda(v) {
 }
 
 // ===== Salvar / carregar (localStorage = guarda só neste navegador) =====
+// Guarda quem está logado agora (null = ninguém, app funciona só localmente).
+let usuarioAtual = null;
+
 let saveTimeout = null;
 function salvar() {
   const statusEl = document.getElementById('statusSalvo');
@@ -43,11 +92,19 @@ function salvar() {
   saveTimeout = setTimeout(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
-      statusEl.textContent = 'Salvo ✓';
+      statusEl.textContent = usuarioAtual ? 'Salvo ✓ (sincronizado)' : 'Salvo ✓';
       setTimeout(() => { statusEl.textContent = ''; }, 1500);
     } catch (e) {
       statusEl.textContent = 'Não foi possível salvar agora.';
       console.error('Erro ao salvar:', e);
+    }
+    // Se está logado, manda a mesma cópia pra nuvem (Firestore). Isso roda
+    // "em segundo plano" (não usamos await aqui) — não trava a digitação
+    // da pessoa esperando a internet responder.
+    if (usuarioAtual) {
+      const { fb, uid } = usuarioAtual;
+      fb.storeMod.setDoc(fb.storeMod.doc(fb.db, 'usuarios', uid), dados)
+        .catch(e => console.error('Erro ao sincronizar com a nuvem:', e));
     }
   }, 400);
 }
@@ -705,6 +762,169 @@ document.getElementById('inputImportarBackup').addEventListener('change', (e) =>
   leitor.readAsText(arquivo);
 });
 
+// ===== Conta: login, cadastro e sincronização com a nuvem =====
+const modalConta = document.getElementById('modalConta');
+const contaDeslogado = document.getElementById('contaDeslogado');
+const contaLogado = document.getElementById('contaLogado');
+const statusConta = document.getElementById('statusConta');
+
+document.getElementById('btnConta').addEventListener('click', () => {
+  statusConta.textContent = '';
+  modalConta.classList.add('aberto');
+  // Começa a carregar o Firebase em segundo plano assim que o modal abre —
+  // se a pessoa realmente clicar em "Entrar" depois, o Firebase já estará
+  // pronto (ou quase), sem ela perceber espera. Erros aqui são ignorados
+  // silenciosamente; se falhar, tentamos de novo no clique do botão.
+  carregarFirebase().catch(() => {});
+});
+document.getElementById('btnFecharModalConta').addEventListener('click', () => {
+  modalConta.classList.remove('aberto');
+});
+modalConta.addEventListener('click', (e) => {
+  if (e.target.id === 'modalConta') modalConta.classList.remove('aberto');
+});
+
+// Mensagens de erro do Firebase vêm em inglês e técnicas (ex: "auth/weak-password").
+// Traduzimos as mais comuns pra algo que a pessoa entenda de primeira.
+function traduzirErroFirebase(codigo) {
+  const mapa = {
+    'auth/invalid-email': 'E-mail inválido.',
+    'auth/missing-password': 'Digite uma senha.',
+    'auth/weak-password': 'A senha precisa ter pelo menos 6 caracteres.',
+    'auth/email-already-in-use': 'Já existe uma conta com esse e-mail. Tente entrar.',
+    'auth/invalid-credential': 'E-mail ou senha incorretos.',
+    'auth/wrong-password': 'E-mail ou senha incorretos.',
+    'auth/user-not-found': 'Não existe conta com esse e-mail. Tente criar uma.',
+    'auth/too-many-requests': 'Muitas tentativas. Espere um pouco e tente de novo.',
+    'auth/network-request-failed': 'Sem conexão com a internet.'
+  };
+  return mapa[codigo] || 'Não foi possível concluir. Tente novamente.';
+}
+
+document.getElementById('btnEntrar').addEventListener('click', async () => {
+  const email = document.getElementById('contaEmail').value.trim();
+  const senha = document.getElementById('contaSenha').value;
+  statusConta.textContent = 'Conectando...';
+  try {
+    const fb = await carregarFirebase();
+    await fb.authMod.signInWithEmailAndPassword(fb.auth, email, senha);
+    // O resto (fechar modal, sincronizar dados) acontece no listener
+    // onAuthStateChanged, que é ligado assim que o Firebase termina de carregar.
+  } catch (e) {
+    // Erros de login de verdade (senha errada, e-mail inválido etc.) sempre
+    // vêm com um "e.code" da Firebase. Se não tem "code", é porque nem
+    // chegou a conversar com o Firebase — típico de sem-internet, CDN
+    // bloqueado, ou nosso próprio limite de tempo (8s) estourando.
+    statusConta.textContent = e.code
+      ? '⚠️ ' + traduzirErroFirebase(e.code)
+      : '⚠️ Não foi possível conectar ao serviço de login. Verifique sua internet.';
+  }
+});
+
+document.getElementById('btnCriarConta').addEventListener('click', async () => {
+  const email = document.getElementById('contaEmail').value.trim();
+  const senha = document.getElementById('contaSenha').value;
+  statusConta.textContent = 'Criando conta...';
+  try {
+    const fb = await carregarFirebase();
+    await fb.authMod.createUserWithEmailAndPassword(fb.auth, email, senha);
+  } catch (e) {
+    statusConta.textContent = e.code
+      ? '⚠️ ' + traduzirErroFirebase(e.code)
+      : '⚠️ Não foi possível conectar ao serviço de login. Verifique sua internet.';
+  }
+});
+
+document.getElementById('btnSair').addEventListener('click', async () => {
+  try {
+    const fb = await carregarFirebase();
+    await fb.authMod.signOut(fb.auth);
+  } catch (e) {
+    console.error('Erro ao sair:', e);
+  }
+  // Os dados continuam salvos neste aparelho (localStorage) depois do logout —
+  // só paramos de mandar atualizações pra nuvem até logar de novo.
+  modalConta.classList.remove('aberto');
+});
+
+// Liga o listener de login assim que o Firebase estiver disponível. Isso é
+// chamado tanto ao abrir o app (silenciosamente, em segundo plano — se não
+// houver internet, o app continua 100% funcional só que sem sincronizar)
+// quanto depois de qualquer ação de login/cadastro/logout.
+let listenerContaLigado = false;
+function ligarListenerDeConta() {
+  if (listenerContaLigado) return;
+  listenerContaLigado = true;
+  carregarFirebase().then(fb => {
+    fb.authMod.onAuthStateChanged(fb.auth, async (user) => {
+      usuarioAtual = user ? { uid: user.uid, fb } : null;
+
+      if (!user) {
+        contaDeslogado.style.display = 'block';
+        contaLogado.style.display = 'none';
+        return;
+      }
+
+      contaDeslogado.style.display = 'none';
+      contaLogado.style.display = 'block';
+      document.getElementById('contaEmailAtual').textContent = user.email;
+      document.getElementById('contaEmail').value = '';
+      document.getElementById('contaSenha').value = '';
+
+      await sincronizarComANuvem(user, fb);
+      modalConta.classList.remove('aberto');
+    });
+  }).catch(() => {
+    // Sem internet/Firebase indisponível ao abrir o app: sem problema,
+    // segue tudo funcionando só com os dados deste aparelho.
+    listenerContaLigado = false;
+  });
+}
+
+// Decide o que fazer quando alguém loga: se já existem dados na nuvem desse
+// usuário, pergunta se quer usá-los (substitui os deste aparelho) ou manter
+// os deste aparelho (substitui os da nuvem). Se a nuvem ainda está vazia,
+// simplesmente envia os dados atuais do aparelho pra lá.
+async function sincronizarComANuvem(user, fb) {
+  statusConta.textContent = 'Sincronizando...';
+  try {
+    const ref = fb.storeMod.doc(fb.db, 'usuarios', user.uid);
+    const snap = await fb.storeMod.getDoc(ref);
+
+    if (snap.exists()) {
+      const dadosNuvem = snap.data();
+      const temDadosLocaisReais = dados.contas.length > 0 || Number(dados.salario) > 0;
+
+      let usarNuvem = true;
+      if (temDadosLocaisReais) {
+        usarNuvem = confirm(
+          'Encontramos dados salvos na nuvem dessa conta.\n\n' +
+          'Clique OK para usar os dados da NUVEM (substitui os deste aparelho).\n' +
+          'Clique Cancelar para manter os dados DESTE APARELHO (substitui os da nuvem).'
+        );
+      }
+
+      if (usarNuvem) {
+        dados = Object.assign({
+          tema: dados.tema, salario: 0, valorSemana: 0, valorSabado: 0, valorDomingo: 0,
+          contas: [], diasTrabalhados: {}, valoresPersonalizados: {}, historicoMeses: []
+        }, dadosNuvem);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+        aplicarDadosNaTela();
+      } else {
+        await fb.storeMod.setDoc(ref, dados);
+      }
+    } else {
+      // Primeira vez desse usuário: sobe o que já existe neste aparelho.
+      await fb.storeMod.setDoc(ref, dados);
+    }
+    statusConta.textContent = '';
+  } catch (e) {
+    statusConta.textContent = '⚠️ Não foi possível sincronizar agora.';
+    console.error('Erro ao sincronizar:', e);
+  }
+}
+
 // ===== Instalar como app (PWA) =====
 // O navegador dispara "beforeinstallprompt" quando o site cumpre os requisitos
 // de instalação (manifest.json + ícones + service worker). Guardamos esse
@@ -794,6 +1014,12 @@ function iniciar() {
       renderCalendario();
     }
   }, 60000);
+
+  // Tenta ligar a sincronização com a nuvem em segundo plano, sem travar a
+  // tela nem atrasar o carregamento do app. Se não houver internet ou o
+  // Firebase demorar demais, isso falha silenciosamente e o app continua
+  // funcionando 100% normal, só com os dados deste aparelho.
+  ligarListenerDeConta();
 }
 
 iniciar();

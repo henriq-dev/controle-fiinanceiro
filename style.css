@@ -690,6 +690,26 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   line-height: 1.6;
 }
 
+/* ===== Modal: conta (login/cadastro) ===== */
+.campo-label {
+  display: block;
+  font-size: 12px;
+  color: var(--texto-secundario);
+  margin: 10px 0 4px 0;
+}
+.campo-conta {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  font-family: inherit;
+  background: var(--card-bg);
+  color: var(--texto);
+}
+#contaLogado .modal-texto strong {
+  color: var(--azul-texto-forte);
+}
+
 /* ===== Modal: ajustar valor de dias específicos ===== */
 .linha-dia-editar {
   display: flex;

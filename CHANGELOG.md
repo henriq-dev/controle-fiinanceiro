@@ -53,12 +53,23 @@ Repositório: GitHub (controle-fiinanceiro)
 ## 💡 Backlog (ideias, sem versão definida ainda)
 - Lembrete de backup: avisar dentro do app quando fizer tempo (~15 dias) desde o último export, pra ajudar usuários leigos que podem esquecer de fazer backup manual
 
-## ⬜ v2.0.0 — Planejado (grande mudança)
-- Login / salvar na nuvem — precisa de serviço externo (ex: Firebase), foge do "só vanilla". Discutir arquitetura antes de começar.
+## 🔄 v2.0.0 — Em andamento (login/nuvem)
+Decisão tomada: usar **Firebase** (Authentication + Firestore), priorizando valor de aprendizado.
+Plano:
+- Autenticação por e-mail/senha
+- Firestore guarda os dados na nuvem (substitui/complementa o localStorage)
+- `localStorage` continua como cache local, pro app funcionar rápido e offline
+- SDK do Firebase via `<script>` CDN, sem build tool, mantendo o projeto simples
+
+**Status atual: aguardando o usuário criar o projeto no Firebase Console.**
+Passo a passo já foi enviado (5 passos: criar projeto → ativar Authentication e/senha →
+criar Firestore em modo teste → registrar app Web → copiar o `firebaseConfig`).
+Retomar pedindo o `firebaseConfig` (não é segredo, pode colar aqui) — com ele, começamos
+a integrar o SDK no `index.html`/`script.js`.
 
 ---
 
 ## Como retomar em uma conversa nova
 1. Abra uma conversa nova dentro deste mesmo Projeto (a memória do projeto ajuda a manter o contexto).
 2. Se quiser, anexe os arquivos atuais do repositório (`index.html`, `style.css`, `script.js`) pra eu conferir o estado exato.
-3. Diga: "Vamos continuar" — próxima etapa é a v2.0.0 (login/nuvem), que precisa de uma conversa à parte sobre arquitetura (envolve escolher e configurar um backend externo, ex: Firebase).
+3. Diga: "Vamos continuar" e cole o `firebaseConfig` se já tiver criado o projeto no Firebase Console. Se ainda não criou, peça o passo a passo de novo.
