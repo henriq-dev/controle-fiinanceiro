@@ -64,8 +64,14 @@ Feito com **Firebase** (Authentication e/senha + Firestore), testado e funcionan
   em vez de travar
 - Testado: uso sem login (funciona igual antes), login/cadastro, sincronização entre
   navegadores diferentes, app resistente à falta de conexão com o Firebase
-- Regras de segurança do Firestore documentadas em `FIRESTORE-REGRAS.md` (cada pessoa só
-  acessa os próprios dados, ninguém mais)
+- **Banco de dados**: Firestore criado (edição Standard, região southamerica-east1) —
+  atenção: no Firebase Console em português, ele aparece com o nome estranho
+  "Armazém de incêndio" (tradução literal de "Firestore"). Não confundir com
+  "Banco de dados em tempo real" (Realtime Database), que é outro produto e não é usado aqui
+- Regras de segurança do Firestore aplicadas e confirmadas (cada pessoa só acessa os
+  próprios dados) — documentadas em `FIRESTORE-REGRAS.md`
+- Confirmado no Firebase Console: a coleção `usuarios` recebe os documentos com os
+  dados sincronizados corretamente (contas, diasTrabalhados, historicoMeses, salario, etc.)
 
 ---
 
