@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Controle Financeiro</title>
 <meta name="description" content="Controle suas contas, diárias e salário do mês, tudo salvo no seu próprio aparelho.">
 <meta name="theme-color" content="#1f4e78">
@@ -43,12 +43,23 @@
       </div>
     </div>
     <div class="botoes-topo">
-      <button class="btn-icone" id="btnConta" title="Minha conta" aria-label="Minha conta">👤</button>
-      <button class="btn-icone" id="btnBackup" title="Backup dos dados" aria-label="Backup dos dados">💾</button>
-      <button class="btn-icone" id="btnInstalar" title="Instalar como app" aria-label="Instalar como app">📲</button>
-      <button class="btn-icone" id="btnTema" title="Alternar tema claro/escuro" aria-label="Alternar tema">🌙</button>
+      <button class="btn-icone" id="btnConta" title="Minha conta" aria-label="Minha conta">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"></path></svg>
+      </button>
+      <button class="btn-icone" id="btnBackup" title="Backup dos dados" aria-label="Backup dos dados">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11l3 3v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"></path><path d="M8 4v5h7V4"></path><path d="M7 14h10v6H7z"></path></svg>
+      </button>
+      <button class="btn-icone" id="btnInstalar" title="Instalar como app" aria-label="Instalar como app">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"></path><path d="M7 11l5 5 5-5"></path><path d="M5 19h14"></path></svg>
+      </button>
+      <button class="btn-icone" id="btnTema" title="Alternar tema claro/escuro" aria-label="Alternar tema"></button>
     </div>
   </header>
+
+  <!-- Badge de aviso: só aparece quando há conta atrasada ou vencendo em
+       breve. Escondido por padrão via style inline — o JS decide se mostra
+       e o quê, com base nas contas cadastradas. -->
+  <p class="badge-vencendo" id="badgeVencendo" style="display:none;" role="status"></p>
 
   <!-- Modal de conta: login/cadastro com Firebase. Usar o app SEM login continua
        funcionando 100% normal, só com os dados salvos neste aparelho (localStorage).
@@ -56,7 +67,7 @@
        de qualquer aparelho em que você logar com o mesmo e-mail. -->
   <div class="modal-fundo" id="modalConta">
     <div class="modal-caixa">
-      <div class="modal-titulo">👤 Minha conta</div>
+      <div class="modal-titulo">Minha conta</div>
 
       <!-- Mostrado quando NINGUÉM está logado -->
       <div id="contaDeslogado">
@@ -89,13 +100,14 @@
        fora do navegador) e importar esse arquivo de volta, em qualquer aparelho. -->
   <div class="modal-fundo" id="modalBackup">
     <div class="modal-caixa">
-      <div class="modal-titulo">💾 Backup dos dados</div>
+      <div class="modal-titulo">Backup dos dados</div>
       <div class="modal-texto">
         Seus dados ficam salvos só neste navegador. Se limpar o cache, trocar de
         aparelho ou desinstalar o app, você perde tudo — a menos que tenha um backup.
       </div>
 
-      <button class="btn-add" id="btnExportarBackup" style="width:100%;">⬇️ Baixar backup (.json)</button>
+      <button class="btn-add" id="btnExportarBackup" style="width:100%;">Baixar backup completo (.json)</button>
+      <button class="btn-secundario" id="btnExportarCSV" style="width:100%; margin-top:8px;">Exportar contas (.csv)</button>
 
       <div class="modal-secao">
         <strong>Restaurar um backup</strong>
@@ -103,7 +115,7 @@
           Isso substitui os dados atuais deste aparelho pelos dados do arquivo escolhido.
         </p>
         <input type="file" id="inputImportarBackup" accept="application/json,.json" style="display:none;">
-        <button class="btn-secundario" id="btnImportarBackup" style="width:100%;">⬆️ Escolher arquivo de backup</button>
+        <button class="btn-secundario" id="btnImportarBackup" style="width:100%;">Escolher arquivo de backup</button>
       </div>
 
       <p class="status-save" id="statusImportacao" style="text-align:left; margin-top:4px;"></p>
@@ -124,10 +136,10 @@
         em tela cheia e sem precisar abrir o navegador.
       </div>
 
-      <button class="btn-add" id="btnInstalarNativo" style="width:100%; display:none;">⬇️ Baixar / instalar app</button>
+      <button class="btn-add" id="btnInstalarNativo" style="width:100%; display:none;">Baixar / instalar app</button>
 
       <div class="modal-secao" id="secaoIOS">
-        <strong>📱 iPhone (Safari)</strong>
+        <strong>iPhone (Safari)</strong>
         <ol>
           <li>Toque no ícone de compartilhar (o quadrado com seta pra cima)</li>
           <li>Escolha "Adicionar à Tela de Início"</li>
@@ -135,7 +147,7 @@
         </ol>
       </div>
       <div class="modal-secao" id="secaoAndroid">
-        <strong>🤖 Android (Chrome), sem o botão acima</strong>
+        <strong>Android (Chrome), sem o botão acima</strong>
         <ol>
           <li>Toque nos três pontinhos no canto superior direito</li>
           <li>Escolha "Adicionar à tela inicial" ou "Instalar app"</li>
@@ -151,19 +163,19 @@
     <section class="card" aria-labelledby="tituloResumo">
       <h2 id="tituloResumo">Resumo do mês</h2>
       <div class="resumo-grid">
-        <div class="resumo-item">
+        <div class="resumo-item entrada">
           <label for="salario">Salário fixo</label>
-          <input type="number" id="salario" step="0.01" min="0" placeholder="0,00" inputmode="decimal">
+          <input type="text" id="salario" placeholder="0,00" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]{0,2}">
         </div>
-        <div class="resumo-item">
+        <div class="resumo-item entrada">
           <label>Diárias recebidas</label>
           <div class="valor" id="totalDiarias">R$ 0,00</div>
         </div>
-        <div class="resumo-item">
+        <div class="resumo-item saida">
           <label>Total das contas</label>
           <div class="valor" id="totalContas">R$ 0,00</div>
         </div>
-        <div class="resumo-item">
+        <div class="resumo-item saida">
           <label>Falta pagar</label>
           <div class="valor" id="faltaPagar">R$ 0,00</div>
         </div>
@@ -176,14 +188,24 @@
 
     <!-- Gráfico: visão rápida de entradas vs. saídas do mês -->
     <section class="card" aria-labelledby="tituloGrafico">
-      <h2 id="tituloGrafico">📊 Salário vs. gastos vs. sobra</h2>
+      <h2 id="tituloGrafico">Salário vs. gastos vs. sobra</h2>
       <div id="graficoResumo"></div>
       <p class="vazio-aviso" id="avisoGraficoVazio">Preencha o salário, as diárias ou alguma conta para ver o gráfico.</p>
     </section>
 
     <!-- Contas: começa vazia de propósito, cada pessoa monta a sua lista -->
     <section class="card" aria-labelledby="tituloContas">
-      <h2 id="tituloContas">Contas</h2>
+      <div class="contas-cabecalho">
+        <h2 id="tituloContas">Contas</h2>
+        <div class="ordenar-wrap">
+          <label for="ordenarContas" class="sr-only">Ordenar contas por</label>
+          <select id="ordenarContas">
+            <option value="vencimento">Vencimento</option>
+            <option value="valor">Maior valor</option>
+            <option value="nome">Nome (A-Z)</option>
+          </select>
+        </div>
+      </div>
       <div class="table-scroll">
       <table>
         <thead>
@@ -199,7 +221,7 @@
         <tbody id="tabelaContas"></tbody>
       </table>
       </div>
-      <p class="vazio-aviso" id="avisoVazio">Nenhuma conta cadastrada ainda. Adicione a primeira abaixo. 👇</p>
+      <p class="vazio-aviso" id="avisoVazio">Nenhuma conta cadastrada ainda. Adicione a primeira abaixo.</p>
       <button class="btn-add" id="btnAddConta">+ adicionar conta</button>
       <div class="linha-total">
         <span>Total geral</span>
@@ -207,18 +229,24 @@
       </div>
       <div id="resumoCategorias" class="resumo-categorias"></div>
       <div class="acoes-mes">
-        <button class="btn-secundario" id="btnFecharMes">📁 Fechar mês</button>
-        <button class="btn-secundario" id="btnHistorico">🕓 Histórico</button>
+        <button class="btn-secundario" id="btnFecharMes">Fechar mês</button>
+        <button class="btn-secundario" id="btnHistorico">Histórico</button>
       </div>
     </section>
 
     <!-- Modal de histórico: resumo dos meses já fechados -->
     <div class="modal-fundo" id="modalHistorico">
       <div class="modal-caixa">
-        <div class="modal-titulo">🕓 Histórico de meses</div>
+        <div class="modal-titulo">Histórico de meses</div>
         <div class="modal-texto">
           Resumo de cada mês fechado. As contas de cada mês continuam guardadas aqui,
           mesmo depois de "Fechar mês" resetar a lista atual.
+        </div>
+        <div class="ordenar-wrap" style="margin-bottom:10px;">
+          <label for="filtroHistoricoAno" class="sr-only">Filtrar por ano</label>
+          <select id="filtroHistoricoAno" style="width:100%;">
+            <option value="todos">Todos os anos</option>
+          </select>
         </div>
         <div id="listaHistorico"></div>
         <p class="vazio-aviso" id="avisoSemHistorico">Nenhum mês fechado ainda.</p>
@@ -232,15 +260,15 @@
       <div class="diaria-config">
         <div>
           <label for="valorSemana">Seg-Sex (R$)</label>
-          <input type="number" id="valorSemana" step="0.01" min="0" placeholder="0,00" inputmode="decimal">
+          <input type="text" id="valorSemana" placeholder="0,00" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]{0,2}">
         </div>
         <div>
           <label for="valorSabado">Sábado (R$)</label>
-          <input type="number" id="valorSabado" step="0.01" min="0" placeholder="0,00" inputmode="decimal">
+          <input type="text" id="valorSabado" placeholder="0,00" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]{0,2}">
         </div>
         <div>
           <label for="valorDomingo">Domingo (R$)</label>
-          <input type="number" id="valorDomingo" step="0.01" min="0" placeholder="0,00" inputmode="decimal">
+          <input type="text" id="valorDomingo" placeholder="0,00" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]{0,2}">
         </div>
       </div>
       <div class="calendario-nav">
@@ -249,7 +277,7 @@
         <button class="btn-icone" id="btnMesProximo" aria-label="Próximo mês">›</button>
       </div>
       <div class="calendario" id="calendario"></div>
-      <button class="btn-secundario" id="btnEditarDias" style="width:100%;">✏️ Ajustar valor de um dia específico</button>
+      <button class="btn-secundario" id="btnEditarDias" style="width:100%;">Ajustar valor de um dia específico</button>
     </section>
   </main>
 
@@ -267,7 +295,48 @@
     </div>
   </div>
 
-  <p class="status-save" id="statusSalvo"></p>
+  <!-- Modal de escolha de tema: 4 opções, cada uma com uma prévia de cor
+       (o quadradinho não é decoração — é a cor de fundo real daquele
+       tema, pra dar uma ideia de como vai ficar antes de escolher). -->
+  <div class="modal-fundo" id="modalTemas" role="dialog" aria-modal="true" aria-labelledby="temasTitulo">
+    <div class="modal-caixa">
+      <div class="modal-titulo" id="temasTitulo">Escolher tema</div>
+      <button class="tema-opcao" data-tema="light" type="button">
+        <span class="tema-opcao-cor" style="background:#f4f5f7; border:1px solid #dcdfe4;"></span>
+        Claro
+      </button>
+      <button class="tema-opcao" data-tema="dark" type="button">
+        <span class="tema-opcao-cor" style="background:#14181f; border:1px solid #333b47;"></span>
+        Escuro
+      </button>
+      <button class="tema-opcao" data-tema="alto-contraste" type="button">
+        <span class="tema-opcao-cor" style="background:#000000; border:1px solid #ffffff;"></span>
+        Alto contraste
+      </button>
+      <button class="tema-opcao" data-tema="noturno-amarelado" type="button">
+        <span class="tema-opcao-cor" style="background:#1c1610; border:1px solid #4a3c28;"></span>
+        Noturno amarelado
+      </button>
+      <button class="btn-secundario" id="btnFecharModalTemas" style="width:100%; margin-top:10px;">Fechar</button>
+    </div>
+  </div>
+
+  <!-- Modal genérico de confirmação/alerta — substitui confirm()/alert() nativos,
+       que em alguns PWAs instalados no iOS e WebViews Android são suprimidos
+       (o botão simplesmente não faz nada), além de serem caixas feias do
+       sistema operacional que destoam do resto do app. -->
+  <div class="modal-fundo" id="modalConfirmacao" role="dialog" aria-modal="true" aria-labelledby="confirmacaoTitulo">
+    <div class="modal-caixa modal-caixa-confirmacao">
+      <div class="modal-titulo" id="confirmacaoTitulo"></div>
+      <div class="modal-texto" id="confirmacaoMensagem" style="white-space: pre-line;"></div>
+      <div class="modal-acoes">
+        <button class="btn-secundario" id="confirmacaoBtnCancelar" style="margin-top:0;"></button>
+        <button class="btn-add" id="confirmacaoBtnConfirmar" style="margin-top:0;"></button>
+      </div>
+    </div>
+  </div>
+
+  <p class="status-save" id="statusSalvo" aria-live="polite" role="status"></p>
 </div>
 
 <script src="script.js"></script>

@@ -59,7 +59,8 @@ let dados = {
   contas: [],                // <- começa vazia: cada pessoa cadastra as suas contas
   diasTrabalhados: {},        // "YYYY-M-D": true
   valoresPersonalizados: {},  // "YYYY-M-D": valor específico daquele dia (sobrescreve o padrão)
-  historicoMeses: []          // meses já fechados, com o resumo e a lista de contas de cada um
+  historicoMeses: [],         // meses já fechados, com o resumo e a lista de contas de cada um
+  ordenarContasPor: 'vencimento' // 'vencimento' | 'valor' | 'nome' — lembrado entre sessões
 };
 
 const hojeInicial = new Date();
@@ -79,11 +80,258 @@ function formatarMoeda(v) {
   return (num < 0 ? '-R$ ' : 'R$ ') + abs;
 }
 
+// ===== Leitura segura de valores monetários =====
+// Corrige um bug real: o teclado numérico do Android às vezes entrega
+// "12,50" (vírgula) para o campo, e parseFloat('12,50') retorna 12 — o
+// resto do valor simplesmente some. Aqui aceitamos tanto ponto quanto
+// vírgula como separador decimal, e rejeitamos "1e6" (notação científica
+// que o input number aceita, mas que não faz sentido em dinheiro).
+// Trabalhamos internamente em CENTAVOS (inteiros) para evitar erros de
+// arredondamento de ponto flutuante (ex: 0,10 + 0,20 != 0,30 em binário),
+// e só convertemos de volta pra reais na hora de guardar/mostrar.
+function lerMoeda(valor) {
+  // Valor já numérico (ex: vindo de um backup importado, onde o JSON
+  // guarda number, não texto digitado) — só valida faixa, sem regex de texto.
+  if (typeof valor === 'number') {
+    return (Number.isFinite(valor) && valor >= 0) ? Math.round(valor * 100) / 100 : 0;
+  }
+  if (valor === '' || valor === null || valor === undefined) return 0;
+  // Remove separador de milhar (ponto) e troca a vírgula decimal por ponto
+  // — aceita tanto "1234.56" (formato "cru") quanto "1.234,56" (formato
+  // que a máscara ao vivo do campo gera enquanto a pessoa digita).
+  const normalizado = String(valor).trim().replace(/\./g, '').replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(normalizado)) return 0;
+  const centavos = Math.round(Number(normalizado) * 100);
+  return Number.isFinite(centavos) ? centavos / 100 : 0;
+}
+
+// Formata um número pra exibir dentro de um CAMPO editável de moeda — igual
+// ao formatarMoeda, mas sem o "R$" na frente (o campo já deixa claro pelo
+// rótulo ao lado que é dinheiro; o prefixo dentro do campo atrapalharia o
+// cursor ao editar).
+function formatarMoedaInput(valor) {
+  return (Number(valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ===== Máscara de moeda ao vivo =====
+// Técnica de "calculadora": cada dígito novo entra sempre pela direita,
+// empurrando os centavos já digitados pra esquerda — é assim que apps de
+// banco formatam valor enquanto a pessoa digita, sem precisar controlar
+// manualmente a posição do cursor (o que é bem mais frágil de acertar).
+// Chamado a cada tecla, ANTES de ler o valor pra guardar nos dados.
+function aplicarMascaraMoeda(input) {
+  const digitos = input.value.replace(/\D/g, '');
+  input.value = digitos === '' ? '' : formatarMoedaInput(parseInt(digitos, 10) / 100);
+}
+
+// Soma valores monetários passando por centavos inteiros, evitando que o
+// ponto flutuante acumule erro de arredondamento em listas grandes.
+function somarMoeda(lista, seletor) {
+  const centavos = lista.reduce((total, item) => total + Math.round((Number(seletor(item)) || 0) * 100), 0);
+  return centavos / 100;
+}
+
+// Vibração curta como feedback tátil (ex: ao pagar uma conta). A API
+// navigator.vibrate não existe no Safari/iOS — por isso sempre checamos
+// se ela existe antes de chamar, senão o app quebraria em iPhone.
+function vibrarSeSuportado(ms) {
+  if (navigator.vibrate) {
+    try { navigator.vibrate(ms); } catch (e) { /* silencioso: vibração é só um extra */ }
+  }
+}
+
+// Escapa texto antes de inserir via innerHTML. Necessário porque strings
+// como "categoria" ou "mesLabel" podem vir de um backup/nuvem importado
+// (não digitado pela própria pessoa nesta tela) — sem isso, um arquivo de
+// backup adulterado poderia injetar HTML/JS na tela (XSS).
+function escaparHTML(texto) {
+  const div = document.createElement('div');
+  div.textContent = String(texto);
+  return div.innerHTML;
+}
+
+// Identifica um mês de forma única (ano-mês), independente do rótulo em
+// português — usado para impedir fechar o mesmo período duas vezes.
+function chaveMes(ano, mes) {
+  return `${ano}-${String(mes + 1).padStart(2, '0')}`;
+}
+
+// ===== Validação de backup importado =====
+// JSON.parse dar certo só garante que o TEXTO é JSON válido — não garante
+// que o FORMATO é o que o app espera. Um arquivo de backup corrompido,
+// editado à mão ou de uma versão muito diferente do app pode ter, por
+// exemplo, "contas" como texto em vez de lista. Sem essa validação, o
+// app aceitava qualquer coisa e quebrava na hora de desenhar a tela
+// (ex: dados.contas.forEach não existe se contas não for um array).
+// Aqui, cada campo é conferido e, se estiver errado, cai num valor padrão
+// seguro em vez de derrubar a importação inteira.
+function normalizarBackup(bruto) {
+  if (!bruto || typeof bruto !== 'object' || Array.isArray(bruto)) {
+    throw new Error('O arquivo não tem o formato esperado de um backup deste app.');
+  }
+
+  const normalizado = {
+    tema: TEMAS_VALIDOS.includes(bruto.tema) ? bruto.tema : 'light',
+    salario: lerMoeda(bruto.salario),
+    valorSemana: lerMoeda(bruto.valorSemana),
+    valorSabado: lerMoeda(bruto.valorSabado),
+    valorDomingo: lerMoeda(bruto.valorDomingo),
+    ordenarContasPor: ['vencimento', 'valor', 'nome'].includes(bruto.ordenarContasPor) ? bruto.ordenarContasPor : 'vencimento',
+    contas: [],
+    diasTrabalhados: {},
+    valoresPersonalizados: {},
+    historicoMeses: []
+  };
+
+  if (Array.isArray(bruto.contas)) {
+    normalizado.contas = bruto.contas
+      .filter(c => c && typeof c === 'object')
+      .map(c => ({
+        nome: typeof c.nome === 'string' ? c.nome.slice(0, 200) : '',
+        valor: lerMoeda(c.valor),
+        categoria: typeof c.categoria === 'string' ? c.categoria.slice(0, 60) : '',
+        vencimento: (typeof c.vencimento === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.vencimento)) ? c.vencimento : '',
+        status: (c.status === 'Pago') ? 'Pago' : 'Pendente'
+      }));
+  }
+
+  if (bruto.diasTrabalhados && typeof bruto.diasTrabalhados === 'object' && !Array.isArray(bruto.diasTrabalhados)) {
+    Object.entries(bruto.diasTrabalhados).forEach(([chave, valor]) => {
+      if (/^\d+-\d+-\d+$/.test(chave) && valor === true) normalizado.diasTrabalhados[chave] = true;
+    });
+  }
+
+  if (bruto.valoresPersonalizados && typeof bruto.valoresPersonalizados === 'object' && !Array.isArray(bruto.valoresPersonalizados)) {
+    Object.entries(bruto.valoresPersonalizados).forEach(([chave, valor]) => {
+      if (/^\d+-\d+-\d+$/.test(chave)) normalizado.valoresPersonalizados[chave] = lerMoeda(valor);
+    });
+  }
+
+  if (Array.isArray(bruto.historicoMeses)) {
+    normalizado.historicoMeses = bruto.historicoMeses
+      .filter(m => m && typeof m === 'object')
+      .map(m => ({
+        mesLabel: typeof m.mesLabel === 'string' ? m.mesLabel.slice(0, 60) : '',
+        // ano/mes são novos (adicionados junto com o filtro do histórico) —
+        // um backup de antes disso não vai ter esses campos. Usamos null
+        // em vez de 0, pra o filtro conseguir separar "não sei o ano" de
+        // "fechado no ano 0", que não existe.
+        ano: Number.isInteger(m.ano) ? m.ano : null,
+        mes: (Number.isInteger(m.mes) && m.mes >= 0 && m.mes <= 11) ? m.mes : null,
+        fechadoEm: typeof m.fechadoEm === 'string' ? m.fechadoEm : '',
+        totalContas: lerMoeda(m.totalContas),
+        diarias: lerMoeda(m.diarias),
+        salario: lerMoeda(m.salario),
+        sobra: (typeof m.sobra === 'number' && Number.isFinite(m.sobra)) ? Math.round(m.sobra * 100) / 100 : 0,
+        // Sem isso, um "contas" ausente ou malformado dentro de um mês do
+        // histórico quebraria renderHistorico inteiro na hora de fazer
+        // mes.contas.length (TypeError: Cannot read length of undefined).
+        contas: Array.isArray(m.contas) ? m.contas.filter(c => c && typeof c === 'object') : []
+      }));
+  }
+
+  return normalizado;
+}
+
+// ===== Modal de confirmação/alerta (substitui confirm()/alert() nativos) =====
+// window.confirm() e window.alert() são bloqueados ou simplesmente ignorados
+// em vários PWAs instalados no iOS e em WebViews Android (o app "trava"
+// esperando um clique que nunca acontece de verdade). Além disso, são caixas
+// cinzas do sistema operacional que destoam do resto da interface. Este
+// modal resolve os dois problemas, e como abrir um modal é sempre
+// assíncrono (a pessoa precisa clicar em algo), a função devolve uma
+// Promise — por isso todo lugar que chamava confirm()/alert() agora usa
+// "await".
+let _confirmacaoResolver = null;
+
+function _fecharModalConfirmacao(resultado) {
+  const modal = document.getElementById('modalConfirmacao');
+  modal.classList.remove('aberto');
+  document.removeEventListener('keydown', _confirmacaoTeclado);
+  if (_confirmacaoFocoAnterior && typeof _confirmacaoFocoAnterior.focus === 'function') {
+    _confirmacaoFocoAnterior.focus();
+  }
+  const resolver = _confirmacaoResolver;
+  _confirmacaoResolver = null;
+  if (resolver) resolver(resultado);
+}
+
+let _confirmacaoFocoAnterior = null;
+
+function _confirmacaoTeclado(e) {
+  const modal = document.getElementById('modalConfirmacao');
+  if (!modal.classList.contains('aberto')) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    _fecharModalConfirmacao(false);
+    return;
+  }
+  // Prende o foco em Tab/Shift+Tab entre os dois botões (acessibilidade —
+  // sem isso, Tab escaparia pro resto da página com o modal ainda aberto).
+  if (e.key === 'Tab') {
+    const focaveis = modal.querySelectorAll('button');
+    if (focaveis.length === 0) return;
+    const primeiro = focaveis[0];
+    const ultimo = focaveis[focaveis.length - 1];
+    if (e.shiftKey && document.activeElement === primeiro) {
+      e.preventDefault(); ultimo.focus();
+    } else if (!e.shiftKey && document.activeElement === ultimo) {
+      e.preventDefault(); primeiro.focus();
+    }
+  }
+}
+
+// Mostra o modal com um botão "Cancelar" e um botão de confirmação.
+// Resolve com true (confirmou) ou false (cancelou/Esc/clicou fora).
+function confirmarModal({ titulo = 'Confirmar', mensagem, textoConfirmar = 'Confirmar', textoCancelar = 'Cancelar', perigo = false }) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('modalConfirmacao');
+    document.getElementById('confirmacaoTitulo').textContent = titulo;
+    document.getElementById('confirmacaoMensagem').textContent = mensagem;
+
+    const btnCancelar = document.getElementById('confirmacaoBtnCancelar');
+    const btnConfirmar = document.getElementById('confirmacaoBtnConfirmar');
+    btnCancelar.style.display = textoCancelar ? '' : 'none';
+    btnCancelar.textContent = textoCancelar;
+    btnConfirmar.textContent = textoConfirmar;
+    btnConfirmar.className = perigo ? 'btn-perigo' : 'btn-add';
+
+    _confirmacaoFocoAnterior = document.activeElement;
+    _confirmacaoResolver = resolve;
+
+    // Clona os botões pra descartar handlers de uma chamada anterior do
+    // modal (evita "vazar" um segundo clique acumulado de outra tela).
+    const novoCancelar = btnCancelar.cloneNode(true);
+    const novoConfirmar = btnConfirmar.cloneNode(true);
+    btnCancelar.replaceWith(novoCancelar);
+    btnConfirmar.replaceWith(novoConfirmar);
+    novoCancelar.addEventListener('click', () => _fecharModalConfirmacao(false));
+    novoConfirmar.addEventListener('click', () => _fecharModalConfirmacao(true));
+
+    modal.classList.add('aberto');
+    document.addEventListener('keydown', _confirmacaoTeclado);
+    setTimeout(() => novoConfirmar.focus(), 0);
+  });
+}
+
+// Mesmo padrão dos outros modais do app: clicar fora da caixa fecha.
+document.getElementById('modalConfirmacao').addEventListener('click', (e) => {
+  if (e.target.id === 'modalConfirmacao') _fecharModalConfirmacao(false);
+});
+
+// Mostra o modal só com um botão "Entendi" (equivalente ao alert() nativo).
+function alertarModal(mensagem, titulo = 'Aviso') {
+  return confirmarModal({ titulo, mensagem, textoConfirmar: 'Entendi', textoCancelar: '' })
+    .then(() => {});
+}
+
 // ===== Salvar / carregar (localStorage = guarda só neste navegador) =====
 // Guarda quem está logado agora (null = ninguém, app funciona só localmente).
 let usuarioAtual = null;
 
 let saveTimeout = null;
+let cloudSaveTimeout = null;
+
 function salvar() {
   const statusEl = document.getElementById('statusSalvo');
   // "Debounce": espera a pessoa parar de digitar por 400ms antes de salvar,
@@ -92,21 +340,36 @@ function salvar() {
   saveTimeout = setTimeout(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
-      statusEl.textContent = usuarioAtual ? 'Salvo ✓ (sincronizado)' : 'Salvo ✓';
+      statusEl.textContent = 'Salvo ✓';
       setTimeout(() => { statusEl.textContent = ''; }, 1500);
     } catch (e) {
       statusEl.textContent = 'Não foi possível salvar agora.';
       console.error('Erro ao salvar:', e);
     }
-    // Se está logado, manda a mesma cópia pra nuvem (Firestore). Isso roda
-    // "em segundo plano" (não usamos await aqui) — não trava a digitação
-    // da pessoa esperando a internet responder.
-    if (usuarioAtual) {
+    saveTimeout = null;
+  }, 400);
+
+  // Sincronização com a nuvem tem um debounce PRÓPRIO e mais longo (1,5s),
+  // separado do salvamento local (400ms) de propósito. Antes os dois
+  // dividiam o mesmo timer, então cada pequena pausa de digitação já
+  // disparava uma escrita no Firestore — em uma sessão de edição corrida
+  // (várias contas, vários campos), isso vira dezenas de escritas em
+  // poucos minutos, arriscando limite de taxa da conta gratuita e gastando
+  // dado móvel à toa. Salvar local continua rápido (a pessoa vê "Salvo"
+  // na hora); só a nuvem espera a digitação realmente parar por mais tempo.
+  if (usuarioAtual) {
+    clearTimeout(cloudSaveTimeout);
+    cloudSaveTimeout = setTimeout(() => {
       const { fb, uid } = usuarioAtual;
       fb.storeMod.setDoc(fb.storeMod.doc(fb.db, 'usuarios', uid), dados)
+        .then(() => {
+          statusEl.textContent = 'Sincronizado ✓';
+          setTimeout(() => { statusEl.textContent = ''; }, 1500);
+        })
         .catch(e => console.error('Erro ao sincronizar com a nuvem:', e));
-    }
-  }, 400);
+      cloudSaveTimeout = null;
+    }, 1500);
+  }
 }
 
 function carregar() {
@@ -119,7 +382,17 @@ function carregar() {
       dados = Object.assign(dados, salvos);
     }
   } catch (e) {
-    console.log('Nada salvo ainda, usando dados iniciais.');
+    // JSON corrompido/de versão antiga, ou o navegador bloqueando
+    // localStorage por alguma política (WebView restrita, extensão de
+    // privacidade, etc). Sem esse catch, o erro sobe e a tela inteira
+    // fica em branco — melhor avisar a pessoa e seguir com os dados em
+    // branco do que travar o app.
+    console.log('Não foi possível ler os dados salvos, começando do zero.', e);
+    const statusEl = document.getElementById('statusSalvo');
+    if (statusEl) {
+      statusEl.textContent = '⚠️ Não foi possível carregar dados salvos neste navegador. Começando do zero.';
+      setTimeout(() => { statusEl.textContent = ''; }, 6000);
+    }
   }
   // Se a pessoa nunca escolheu um tema antes, segue a preferência do sistema.
   if (!temaSalvo && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
@@ -146,6 +419,35 @@ function statusVencimento(vencStr) {
 // data-categoria). "Sem categoria" fica de fora do dropdown como padrão vazio.
 const CATEGORIAS = ['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Lazer', 'Educação', 'Outros'];
 
+// ===== Badge de contas vencendo/atrasadas =====
+// Reaproveita o mesmo statusVencimento() que já colore a bolinha de cada
+// linha da tabela — assim os dois lugares nunca podem "discordar" sobre o
+// que está atrasado ou vencendo.
+function atualizarBadgeVencendo() {
+  const badge = document.getElementById('badgeVencendo');
+  let atrasadas = 0, proximas = 0;
+  dados.contas.forEach(c => {
+    if (c.status !== 'Pendente') return;
+    const sit = statusVencimento(c.vencimento);
+    if (sit === 'atrasada') atrasadas++;
+    else if (sit === 'proxima') proximas++;
+  });
+
+  if (atrasadas > 0) {
+    badge.textContent = atrasadas === 1 ? '1 conta atrasada' : `${atrasadas} contas atrasadas`;
+    badge.className = 'badge-vencendo atrasada';
+    badge.style.display = '';
+  } else if (proximas > 0) {
+    badge.textContent = proximas === 1
+      ? '1 conta vence nos próximos 3 dias'
+      : `${proximas} contas vencem nos próximos 3 dias`;
+    badge.className = 'badge-vencendo proxima';
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
 // ===== Renderização da tabela de contas =====
 function renderContas() {
   const tbody = document.getElementById('tabelaContas');
@@ -154,11 +456,19 @@ function renderContas() {
 
   aviso.style.display = dados.contas.length === 0 ? 'block' : 'none';
 
-  // Mostra as contas ordenadas por data de vencimento (mais próximas primeiro).
-  // Contas sem data ficam por último. O array original (dados.contas) não
-  // muda de ordem — só a exibição. Por isso usamos indexOf para achar a
-  // posição real ao editar/duplicar/remover.
+  // Mostra as contas ordenadas pelo critério escolhido na tela (vencimento,
+  // valor ou nome). O array original (dados.contas) não muda de ordem — só
+  // a exibição. Por isso usamos indexOf para achar a posição real ao
+  // editar/duplicar/remover.
+  const criterio = dados.ordenarContasPor || 'vencimento';
   const contasOrdenadas = [...dados.contas].sort((a, b) => {
+    if (criterio === 'valor') {
+      return (Number(b.valor) || 0) - (Number(a.valor) || 0); // maior valor primeiro
+    }
+    if (criterio === 'nome') {
+      return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
+    }
+    // 'vencimento' (padrão): mais próximas primeiro, sem data fica por último.
     if (!a.vencimento && !b.vencimento) return 0;
     if (!a.vencimento) return 1;
     if (!b.vencimento) return -1;
@@ -169,6 +479,7 @@ function renderContas() {
     const tr = document.createElement('tr');
 
     const tdNome = document.createElement('td');
+    tdNome.dataset.label = 'Conta';
     const inputNome = document.createElement('input');
     inputNome.type = 'text';
     inputNome.value = conta.nome;
@@ -177,16 +488,17 @@ function renderContas() {
     tdNome.appendChild(inputNome);
 
     const tdValor = document.createElement('td');
+    tdValor.dataset.label = 'Valor';
     const inputValor = document.createElement('input');
-    inputValor.type = 'number';
-    inputValor.step = '0.01';
-    inputValor.min = '0';
+    inputValor.type = 'text';
+    inputValor.inputMode = 'decimal';
     inputValor.placeholder = '0,00';
-    inputValor.value = (Number(conta.valor) === 0) ? '' : conta.valor;
-    inputValor.addEventListener('input', e => { conta.valor = parseFloat(e.target.value) || 0; salvar(); renderResumo(); });
+    inputValor.value = (Number(conta.valor) === 0) ? '' : formatarMoedaInput(conta.valor);
+    inputValor.addEventListener('input', e => { aplicarMascaraMoeda(e.target); conta.valor = lerMoeda(e.target.value); salvar(); renderResumo(); });
     tdValor.appendChild(inputValor);
 
     const tdCategoria = document.createElement('td');
+    tdCategoria.dataset.label = 'Categoria';
     const selectCat = document.createElement('select');
     selectCat.className = 'categoria-select';
     selectCat.dataset.categoria = conta.categoria || '';
@@ -208,6 +520,7 @@ function renderContas() {
     tdCategoria.appendChild(selectCat);
 
     const tdVencimento = document.createElement('td');
+    tdVencimento.dataset.label = 'Vencimento';
     const wrapVenc = document.createElement('div');
     wrapVenc.className = 'venc-wrap';
     const bolinha = document.createElement('span');
@@ -220,13 +533,14 @@ function renderContas() {
     inputVenc.value = conta.vencimento || '';
     inputVenc.addEventListener('change', e => {
       conta.vencimento = e.target.value;
-      salvar(); renderContas(); renderResumo();
+      salvar(); renderContas(); renderResumo(); renderCalendario();
     });
     wrapVenc.appendChild(bolinha);
     wrapVenc.appendChild(inputVenc);
     tdVencimento.appendChild(wrapVenc);
 
     const tdStatus = document.createElement('td');
+    tdStatus.dataset.label = 'Status';
     const select = document.createElement('select');
     select.className = 'status ' + (conta.status === 'Pago' ? 'pago' : 'pendente');
     ['Pago', 'Pendente'].forEach(opt => {
@@ -238,7 +552,8 @@ function renderContas() {
     select.addEventListener('change', e => {
       conta.status = e.target.value;
       select.className = 'status ' + (conta.status === 'Pago' ? 'pago' : 'pendente');
-      salvar(); renderContas(); renderResumo();
+      if (conta.status === 'Pago') vibrarSeSuportado(10);
+      salvar(); renderContas(); renderResumo(); renderCalendario();
     });
     tdStatus.appendChild(select);
 
@@ -248,7 +563,7 @@ function renderContas() {
 
     const btnDup = document.createElement('button');
     btnDup.className = 'btn-duplicar';
-    btnDup.textContent = '📋';
+    btnDup.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M4 16V5a1 1 0 0 1 1-1h11"></path></svg>';
     btnDup.setAttribute('aria-label', 'Duplicar conta');
     btnDup.title = 'Duplicar conta';
     btnDup.addEventListener('click', () => {
@@ -264,19 +579,25 @@ function renderContas() {
         categoria: conta.categoria || ''
       };
       dados.contas.splice(posicaoReal + 1, 0, copia);
-      salvar(); renderContas(); renderResumo();
+      salvar(); renderContas(); renderResumo(); renderCalendario();
     });
 
     const btnRem = document.createElement('button');
     btnRem.className = 'btn-remover';
     btnRem.textContent = '✕';
     btnRem.setAttribute('aria-label', 'Remover conta');
-    btnRem.addEventListener('click', () => {
+    btnRem.addEventListener('click', async () => {
       const nomeConta = conta.nome && conta.nome.trim() ? conta.nome : 'esta conta';
-      if (!confirm(`Remover "${nomeConta}"?`)) return;
+      const ok = await confirmarModal({
+        titulo: 'Remover conta',
+        mensagem: `Remover "${nomeConta}"? Essa ação não pode ser desfeita.`,
+        textoConfirmar: 'Remover',
+        perigo: true
+      });
+      if (!ok) return;
       const posicaoReal = dados.contas.indexOf(conta);
       dados.contas.splice(posicaoReal, 1);
-      salvar(); renderContas(); renderResumo();
+      salvar(); renderContas(); renderResumo(); renderCalendario();
     });
 
     acoesWrap.appendChild(btnDup);
@@ -291,6 +612,8 @@ function renderContas() {
     tr.appendChild(tdAcoes);
     tbody.appendChild(tr);
   });
+
+  atualizarBadgeVencendo();
 }
 
 // ===== Calendário de dias trabalhados =====
@@ -340,12 +663,27 @@ function renderCalendario() {
     cal.appendChild(div);
   }
 
+  // Mapeia cada dia do mês exibido às contas que vencem nele — é aqui que
+  // o calendário e as contas finalmente "se falam" (antes eram dois
+  // sistemas totalmente separados). Reaproveita o mesmo texto ISO
+  // (YYYY-MM-DD) que a conta já guarda, sem precisar de nenhuma conversão.
+  const contasPorDia = {};
+  dados.contas.forEach(conta => {
+    if (!conta.vencimento) return;
+    const [vAno, vMes, vDia] = conta.vencimento.split('-').map(Number);
+    if (vAno === ano && (vMes - 1) === mes) {
+      if (!contasPorDia[vDia]) contasPorDia[vDia] = [];
+      contasPorDia[vDia].push(conta);
+    }
+  });
+
   for (let dia = 1; dia <= totalDias; dia++) {
     const chave = `${ano}-${mes}-${dia}`;
     const trabalhado = !!dados.diasTrabalhados[chave];
     const valor = valorDoDia(ano, mes, dia);
     const ehHoje = ano === hojeReal.getFullYear() && mes === hojeReal.getMonth() && dia === hojeReal.getDate();
     const personalizado = dados.valoresPersonalizados[chave] !== undefined;
+    const contasDoDia = contasPorDia[dia] || [];
 
     const div = document.createElement('div');
     div.className = 'dia' + (trabalhado ? ' trabalhado' : '') + (ehHoje ? ' hoje' : '') + (personalizado ? ' personalizado' : '');
@@ -357,6 +695,30 @@ function renderCalendario() {
       renderCalendario();
       renderResumo();
     });
+
+    if (contasDoDia.length > 0) {
+      const temPendente = contasDoDia.some(c => c.status === 'Pendente');
+      const bolinha = document.createElement('button');
+      bolinha.className = 'dia-venc-bolinha' + (temPendente ? '' : ' paga');
+      bolinha.type = 'button';
+      // Monta o texto na hora do clique (não aqui na renderização) — assim,
+      // se o valor ou status da conta mudar sem o calendário ser redesenhado
+      // de novo, o popup ainda mostra o dado certo (contasDoDia guarda os
+      // OBJETOS de verdade das contas, não uma cópia).
+      const montarResumo = () => contasDoDia
+        .map(c => `${c.nome && c.nome.trim() ? c.nome : 'Conta sem nome'}: ${formatarMoeda(c.valor)} (${c.status})`)
+        .join('\n');
+      bolinha.setAttribute('aria-label', `Vencimento em ${dia}/${mes + 1}`);
+      bolinha.title = montarResumo();
+      // stopPropagation: clicar no pontinho não pode também contar como
+      // clique no dia (que marcaria/desmarcaria "trabalhado" sem querer).
+      bolinha.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await alertarModal(montarResumo(), `Vencimento em ${dia}/${String(mes + 1).padStart(2, '0')}`);
+      });
+      div.appendChild(bolinha);
+    }
+
     cal.appendChild(div);
   }
 }
@@ -364,29 +726,31 @@ function renderCalendario() {
 function totalDiarias() {
   const ano = mesExibido.ano;
   const mes = mesExibido.mes;
-  let total = 0;
+  let centavos = 0;
   Object.keys(dados.diasTrabalhados).forEach(chave => {
     if (!dados.diasTrabalhados[chave]) return;
     const [a, m, d] = chave.split('-').map(Number);
     if (a === ano && m === mes) {
-      total += valorDoDia(a, m, d);
+      centavos += Math.round(valorDoDia(a, m, d) * 100);
     }
   });
-  return total;
+  return centavos / 100;
 }
 
 // ===== Resumo do mês =====
 function renderResumo() {
-  const totalContas = dados.contas.reduce((s, c) => s + (Number(c.valor) || 0), 0);
-  const faltaPagar = dados.contas.filter(c => c.status === 'Pendente').reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const totalContas = somarMoeda(dados.contas, c => c.valor);
+  const faltaPagar = somarMoeda(dados.contas.filter(c => c.status === 'Pendente'), c => c.valor);
   const diarias = totalDiarias();
   const salario = Number(dados.salario) || 0;
-  const totalReceber = salario + diarias;
+  const totalReceber = somarMoeda([{ v: salario }, { v: diarias }], i => i.v);
   // "Sobra" usa o TOTAL das contas (pagas + pendentes), não só as pendentes.
   // Uma conta paga já saiu do bolso — marcar como "Pago" é só um controle de
   // status, não deve fazer esse dinheiro "voltar" para o valor que sobra.
   // Quem muda com o status é só o "Falta pagar" (acima).
-  const sobra = totalReceber - totalContas;
+  // A subtração final também passa por centavos inteiros (mesma razão do
+  // somarMoeda: evitar que 0.1 + 0.2 vire 0.30000000000000004 na tela).
+  const sobra = (Math.round(totalReceber * 100) - Math.round(totalContas * 100)) / 100;
 
   document.getElementById('totalDiarias').textContent = formatarMoeda(diarias);
   document.getElementById('totalContas').textContent = formatarMoeda(totalContas);
@@ -406,11 +770,11 @@ function renderResumo() {
 // Não usa nenhuma biblioteca de gráficos — é só HTML/CSS com a largura da
 // barra calculada em proporção ao maior valor dos três.
 function renderGrafico() {
-  const totalContas = dados.contas.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const totalContas = somarMoeda(dados.contas, c => c.valor);
   const diarias = totalDiarias();
   const salario = Number(dados.salario) || 0;
-  const entradas = salario + diarias;
-  const sobra = entradas - totalContas;
+  const entradas = Math.round((salario + diarias) * 100) / 100;
+  const sobra = (Math.round(entradas * 100) - Math.round(totalContas * 100)) / 100;
 
   const container = document.getElementById('graficoResumo');
   const aviso = document.getElementById('avisoGraficoVazio');
@@ -443,13 +807,54 @@ function renderGrafico() {
 // ===== Resumo por categoria =====
 // Mostra o total gasto em cada categoria usada, com uma barrinha proporcional
 // ao maior valor — só aparece quando pelo menos uma conta tem categoria.
+// Mesma paleta usada nas bordas do <select> de categoria — assim a pizza e
+// o seletor de categoria falam a "mesma língua" de cores no app inteiro.
+const CATEGORIA_CORES = {
+  'Moradia': '#4c78d9', 'Transporte': '#9b6bd6', 'Alimentação': '#e08a2c',
+  'Saúde': '#e05c6f', 'Lazer': '#3aa65c', 'Educação': '#2ea8a8', 'Outros': '#999999'
+};
+
+// Converte um ângulo (em graus, 0° = direita, sentido horário) num ponto
+// (x,y) sobre um círculo de raio r centrado em (cx,cy). Usado pra desenhar
+// cada fatia da pizza como um <path> de arco SVG.
+function pontoNoCirculo(cx, cy, r, anguloGraus) {
+  const rad = (anguloGraus * Math.PI) / 180;
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
+function construirGraficoPizza(entradas, total) {
+  const raio = 60, centro = 70;
+  let anguloAtual = -90; // começa no topo (12h) em vez da direita (0°), como todo gráfico de pizza costuma começar
+  const partes = entradas.map(([cat, valor]) => {
+    const fracao = total > 0 ? valor / total : 0;
+    const cor = CATEGORIA_CORES[cat] || '#999999';
+    let path;
+    if (fracao >= 0.999) {
+      // Uma única categoria com 100%: um arco de 360° degenera (início e
+      // fim caem no mesmo ponto e nada aparece) — desenha um círculo cheio.
+      path = `<circle cx="${centro}" cy="${centro}" r="${raio}" fill="${cor}"><title>${escaparHTML(cat)}: ${formatarMoeda(valor)}</title></circle>`;
+    } else {
+      const anguloFim = anguloAtual + fracao * 360;
+      const grandeArco = (anguloFim - anguloAtual) > 180 ? 1 : 0;
+      const [x1, y1] = pontoNoCirculo(centro, centro, raio, anguloAtual);
+      const [x2, y2] = pontoNoCirculo(centro, centro, raio, anguloFim);
+      path = `<path d="M ${centro} ${centro} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${raio} ${raio} 0 ${grandeArco} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z" fill="${cor}"><title>${escaparHTML(cat)}: ${formatarMoeda(valor)}</title></path>`;
+      anguloAtual = anguloFim;
+    }
+    return path;
+  });
+  return `<svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label="Gráfico de pizza dos gastos por categoria">${partes.join('')}</svg>`;
+}
+
 function renderResumoCategorias() {
   const container = document.getElementById('resumoCategorias');
-  const porCategoria = {};
+  const porCategoriaCentavos = {};
   dados.contas.forEach(c => {
     if (!c.categoria) return;
-    porCategoria[c.categoria] = (porCategoria[c.categoria] || 0) + (Number(c.valor) || 0);
+    porCategoriaCentavos[c.categoria] = (porCategoriaCentavos[c.categoria] || 0) + Math.round((Number(c.valor) || 0) * 100);
   });
+  const porCategoria = {};
+  Object.keys(porCategoriaCentavos).forEach(cat => { porCategoria[cat] = porCategoriaCentavos[cat] / 100; });
 
   const entradas = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]);
   if (entradas.length === 0) {
@@ -458,12 +863,14 @@ function renderResumoCategorias() {
   }
 
   const maior = Math.max(...entradas.map(e => e[1]));
+  const total = entradas.reduce((s, [, v]) => s + v, 0);
   container.innerHTML = '<div class="resumo-categorias-titulo">Por categoria</div>' +
+    '<div class="cat-pizza-wrap">' + construirGraficoPizza(entradas, total) + '</div>' +
     entradas.map(([cat, valor]) => `
       <div class="cat-barra-linha">
-        <span class="cat-barra-label">${cat}</span>
+        <span class="cat-barra-label">${escaparHTML(cat)}</span>
         <div class="cat-barra-trilho">
-          <div class="cat-barra-preenchida" data-categoria="${cat}" style="width:${maior > 0 ? (valor / maior) * 100 : 0}%"></div>
+          <div class="cat-barra-preenchida" data-categoria="${escaparHTML(cat)}" style="width:${maior > 0 ? (valor / maior) * 100 : 0}%"></div>
         </div>
         <span class="cat-barra-valor">${formatarMoeda(valor)}</span>
       </div>
@@ -477,39 +884,53 @@ function renderResumoCategorias() {
 // todo mês) e, se tinham data de vencimento, essa data avança 1 mês.
 function avancarUmMes(dataStr) {
   const [y, m, d] = dataStr.split('-').map(Number);
-  const prox = new Date(y, m - 1 + 1, d);
+  // m (1..12) já aponta pro mês seguinte quando usado como índice 0 do
+  // construtor Date (ex: m=1 = janeiro em 1-indexado = fevereiro em
+  // 0-indexado). Antes de montar a data, descobrimos quantos dias esse
+  // mês seguinte realmente tem (new Date(y, m+1, 0) = "dia 0" do mês
+  // depois = último dia do mês seguinte) e prendemos o dia nesse limite.
+  // Sem isso, 31/01 + 1 mês virava 03/03 (o JS "estourava" o dia 31 pra
+  // fevereiro, que só tem 28/29, e a sobra vazava pro mês seguinte).
+  const ultimoDiaDoMesSeguinte = new Date(y, m + 1, 0).getDate();
+  const diaFinal = Math.min(d, ultimoDiaDoMesSeguinte);
+  const prox = new Date(y, m, diaFinal);
   const yy = prox.getFullYear();
   const mm = String(prox.getMonth() + 1).padStart(2, '0');
   const dd = String(prox.getDate()).padStart(2, '0');
   return `${yy}-${mm}-${dd}`;
 }
 
-function fecharMes() {
+async function fecharMes() {
   if (dados.contas.length === 0) {
-    alert('Não há contas cadastradas para fechar o mês.');
+    await alertarModal('Não há contas cadastradas para fechar o mês.');
     return;
   }
 
   const nomeMes = capitalizarPrimeira(new Date(mesExibido.ano, mesExibido.mes, 1)
     .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
-  const totalContas = dados.contas.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const totalContas = somarMoeda(dados.contas, c => c.valor);
   const diarias = totalDiarias();
   const salario = Number(dados.salario) || 0;
-  const sobra = (salario + diarias) - totalContas;
+  const sobra = (Math.round((salario + diarias) * 100) - Math.round(totalContas * 100)) / 100;
 
-  const confirmar = confirm(
-    `Fechar ${nomeMes}?\n\nTotal de contas: ${formatarMoeda(totalContas)}\nSobra do mês: ${formatarMoeda(sobra)}\n\n` +
-    `Isso guarda esse resumo no histórico e todas as contas voltam para "Pendente" (prontas para o próximo mês).`
-  );
+  const confirmar = await confirmarModal({
+    titulo: `Fechar ${nomeMes}?`,
+    mensagem: `Total de contas: ${formatarMoeda(totalContas)}\nSobra do mês: ${formatarMoeda(sobra)}\n\n` +
+      `Isso guarda esse resumo no histórico e todas as contas voltam para "Pendente" (prontas para o próximo mês).`,
+    textoConfirmar: 'Fechar mês'
+  });
   if (!confirmar) return;
 
   dados.historicoMeses = dados.historicoMeses || [];
-  dados.historicoMeses.unshift({
+  const registroDoMes = {
     mesLabel: nomeMes,
+    ano: mesExibido.ano,
+    mes: mesExibido.mes, // 0-indexado, igual ao resto do app
     fechadoEm: new Date().toISOString(),
     totalContas, diarias, salario, sobra,
     contas: JSON.parse(JSON.stringify(dados.contas)) // cópia independente, não muda mais depois
-  });
+  };
+  dados.historicoMeses.unshift(registroDoMes);
 
   dados.contas.forEach(conta => {
     conta.status = 'Pendente';
@@ -519,7 +940,22 @@ function fecharMes() {
   salvar();
   renderContas();
   renderResumo();
-  alert('Mês fechado! As contas estão prontas para o próximo mês.');
+  vibrarSeSuportado(10);
+
+  // Backup extra na nuvem: além do salvar() normal (que só atualiza o
+  // documento "ao vivo" da conta), grava esse mês fechado como um documento
+  // À PARTE e imutável. Isso protege contra o cenário em que, meses depois,
+  // um erro ou uma importação de backup ruim sobrescreve o documento
+  // principal — esse snapshot mensal continua intacto na nuvem. Roda em
+  // segundo plano, sem travar a tela nem exigir internet nesse momento.
+  if (usuarioAtual) {
+    const { fb, uid } = usuarioAtual;
+    const chave = chaveMes(mesExibido.ano, mesExibido.mes);
+    fb.storeMod.setDoc(fb.storeMod.doc(fb.db, 'usuarios', uid, 'backupsMensais', chave), registroDoMes)
+      .catch(e => console.error('Não foi possível enviar o backup mensal para a nuvem:', e));
+  }
+
+  await alertarModal('Mês fechado! As contas estão prontas para o próximo mês.');
 }
 
 document.getElementById('btnFecharMes').addEventListener('click', fecharMes);
@@ -528,19 +964,45 @@ document.getElementById('btnFecharMes').addEventListener('click', fecharMes);
 function renderHistorico() {
   const lista = document.getElementById('listaHistorico');
   const aviso = document.getElementById('avisoSemHistorico');
-  const historico = dados.historicoMeses || [];
+  const filtroSelect = document.getElementById('filtroHistoricoAno');
+  const historicoCompleto = dados.historicoMeses || [];
+
+  // Monta a lista de anos disponíveis a partir do que já foi fechado —
+  // não é uma lista fixa, cresce sozinha conforme os meses vão passando.
+  // Meses fechados antes dessa função existir não têm "ano" salvo (null);
+  // esses caem no filtro "Todos os anos" mas não geram uma opção própria.
+  const anosDisponiveis = [...new Set(historicoCompleto.map(m => m.ano).filter(a => a !== null))]
+    .sort((a, b) => b - a); // mais recente primeiro
+
+  const valorAtualDoFiltro = filtroSelect.value || 'todos';
+  filtroSelect.innerHTML = '<option value="todos">Todos os anos</option>' +
+    anosDisponiveis.map(ano => `<option value="${ano}">${ano}</option>`).join('');
+  // Mantém a escolha da pessoa ao re-renderizar (ex: depois de fechar um
+  // mês novo), em vez de sempre voltar pra "Todos os anos".
+  if ([...filtroSelect.options].some(o => o.value === valorAtualDoFiltro)) {
+    filtroSelect.value = valorAtualDoFiltro;
+  }
+
+  const filtroAno = filtroSelect.value;
+  const historico = filtroAno === 'todos'
+    ? historicoCompleto
+    : historicoCompleto.filter(m => String(m.ano) === filtroAno);
+
   lista.innerHTML = '';
   aviso.style.display = historico.length === 0 ? 'block' : 'none';
+  aviso.textContent = historicoCompleto.length === 0
+    ? 'Nenhum mês fechado ainda.'
+    : 'Nenhum mês fechado nesse ano.';
 
   historico.forEach(mes => {
     const item = document.createElement('div');
     item.className = 'item-historico';
     item.innerHTML = `
-      <strong>${mes.mesLabel}</strong>
+      <strong>${escaparHTML(mes.mesLabel)}</strong>
       <div class="item-historico-linha"><span>Total de contas</span><span>${formatarMoeda(mes.totalContas)}</span></div>
       <div class="item-historico-linha"><span>Diárias</span><span>${formatarMoeda(mes.diarias)}</span></div>
       <div class="item-historico-linha"><span>Sobra do mês</span><span>${formatarMoeda(mes.sobra)}</span></div>
-      <div class="item-historico-linha"><span>Contas cadastradas</span><span>${mes.contas.length}</span></div>
+      <div class="item-historico-linha"><span>Contas cadastradas</span><span>${(mes.contas || []).length}</span></div>
     `;
     lista.appendChild(item);
   });
@@ -550,6 +1012,7 @@ document.getElementById('btnHistorico').addEventListener('click', () => {
   renderHistorico();
   document.getElementById('modalHistorico').classList.add('aberto');
 });
+document.getElementById('filtroHistoricoAno').addEventListener('change', renderHistorico);
 document.getElementById('btnFecharModalHistorico').addEventListener('click', () => {
   document.getElementById('modalHistorico').classList.remove('aberto');
 });
@@ -559,19 +1022,23 @@ document.getElementById('modalHistorico').addEventListener('click', (e) => {
 
 // ===== Eventos dos campos fixos =====
 document.getElementById('salario').addEventListener('input', e => {
-  dados.salario = parseFloat(e.target.value) || 0;
+  aplicarMascaraMoeda(e.target);
+  dados.salario = lerMoeda(e.target.value);
   salvar(); renderResumo();
 });
 document.getElementById('valorSemana').addEventListener('input', e => {
-  dados.valorSemana = parseFloat(e.target.value) || 0;
+  aplicarMascaraMoeda(e.target);
+  dados.valorSemana = lerMoeda(e.target.value);
   salvar(); renderCalendario(); renderResumo();
 });
 document.getElementById('valorSabado').addEventListener('input', e => {
-  dados.valorSabado = parseFloat(e.target.value) || 0;
+  aplicarMascaraMoeda(e.target);
+  dados.valorSabado = lerMoeda(e.target.value);
   salvar(); renderCalendario(); renderResumo();
 });
 document.getElementById('valorDomingo').addEventListener('input', e => {
-  dados.valorDomingo = parseFloat(e.target.value) || 0;
+  aplicarMascaraMoeda(e.target);
+  dados.valorDomingo = lerMoeda(e.target.value);
   salvar(); renderCalendario(); renderResumo();
 });
 document.getElementById('btnAddConta').addEventListener('click', () => {
@@ -585,6 +1052,12 @@ document.getElementById('btnAddConta').addEventListener('click', () => {
   }
 });
 
+document.getElementById('ordenarContas').addEventListener('change', e => {
+  dados.ordenarContasPor = e.target.value;
+  salvar();
+  renderContas();
+});
+
 document.getElementById('btnMesAnterior').addEventListener('click', () => {
   mesExibido.mes -= 1;
   if (mesExibido.mes < 0) { mesExibido.mes = 11; mesExibido.ano -= 1; }
@@ -596,18 +1069,50 @@ document.getElementById('btnMesProximo').addEventListener('click', () => {
   renderCalendario(); renderResumo();
 });
 
-// ===== Tema claro/escuro =====
+// ===== Tema =====
+const ICONE_LUA = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"></path></svg>';
+const ICONE_SOL = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>';
+
+// Cor da barra do navegador/status bar em cada tema — puxada direto de
+// --cinza de cada bloco do CSS, pra combinar com o fundo real da tela.
+const CORES_THEME_COLOR = {
+  'light': '#1f4e78',
+  'dark': '#14181f',
+  'alto-contraste': '#000000',
+  'noturno-amarelado': '#1c1610'
+};
+const TEMAS_VALIDOS = Object.keys(CORES_THEME_COLOR);
+
 function aplicarTema() {
   document.documentElement.setAttribute('data-theme', dados.tema);
-  document.getElementById('btnTema').textContent = dados.tema === 'dark' ? '☀️' : '🌙';
+  // Só o tema "light" mostra a lua (indicando "toque pra ver opções mais
+  // escuras") — os outros três já são de base escura, então mostram sol.
+  document.getElementById('btnTema').innerHTML = dados.tema === 'light' ? ICONE_LUA : ICONE_SOL;
   const metaTheme = document.querySelector('meta[name="theme-color"]');
-  if (metaTheme) metaTheme.setAttribute('content', dados.tema === 'dark' ? '#14181f' : '#1f4e78');
+  if (metaTheme) metaTheme.setAttribute('content', CORES_THEME_COLOR[dados.tema] || CORES_THEME_COLOR.light);
 }
 
 document.getElementById('btnTema').addEventListener('click', () => {
-  dados.tema = dados.tema === 'dark' ? 'light' : 'dark';
-  aplicarTema();
-  salvar();
+  document.querySelectorAll('#modalTemas .tema-opcao').forEach(btn => {
+    btn.classList.toggle('selecionado', btn.dataset.tema === dados.tema);
+  });
+  document.getElementById('modalTemas').classList.add('aberto');
+});
+document.getElementById('btnFecharModalTemas').addEventListener('click', () => {
+  document.getElementById('modalTemas').classList.remove('aberto');
+});
+document.getElementById('modalTemas').addEventListener('click', (e) => {
+  if (e.target.id === 'modalTemas') document.getElementById('modalTemas').classList.remove('aberto');
+});
+document.querySelectorAll('#modalTemas .tema-opcao').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tema = btn.dataset.tema;
+    if (!TEMAS_VALIDOS.includes(tema)) return; // defesa: nunca aplicar um valor fora da lista conhecida
+    dados.tema = tema;
+    aplicarTema();
+    salvar();
+    document.getElementById('modalTemas').classList.remove('aberto');
+  });
 });
 
 // ===== Modal: ajustar valor de dias específicos =====
@@ -638,23 +1143,23 @@ function renderListaDiasEditar() {
     label.textContent = nomeDia;
 
     const input = document.createElement('input');
-    input.type = 'number';
-    input.step = '0.01';
-    input.min = '0';
+    input.type = 'text';
+    input.inputMode = 'decimal';
     input.placeholder = '0,00';
     const temPersonalizado = dados.valoresPersonalizados[chave] !== undefined;
-    input.value = temPersonalizado ? dados.valoresPersonalizados[chave] : '';
+    input.value = temPersonalizado ? formatarMoedaInput(dados.valoresPersonalizados[chave]) : '';
     input.setAttribute('aria-label', 'Valor personalizado para ' + nomeDia);
     // Mostra o valor padrão como dica, quando não há valor personalizado ainda
     if (!temPersonalizado) {
       input.placeholder = formatarMoeda(valorDoDia(ano, mes, dia)).replace('R$ ', '');
     }
     input.addEventListener('input', e => {
+      aplicarMascaraMoeda(e.target);
       const texto = e.target.value;
       if (texto === '') {
         delete dados.valoresPersonalizados[chave];
       } else {
-        dados.valoresPersonalizados[chave] = parseFloat(texto) || 0;
+        dados.valoresPersonalizados[chave] = lerMoeda(texto);
       }
       salvar();
       renderCalendario();
@@ -721,6 +1226,55 @@ document.getElementById('btnExportarBackup').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
+// Escapa uma célula de CSV: se o texto tiver ponto-e-vírgula, aspas ou
+// quebra de linha, precisa ir entre aspas (com as aspas internas dobradas),
+// senão bagunça as colunas de quem abrir o arquivo numa planilha.
+function celulaCSV(texto) {
+  const t = String(texto ?? '');
+  if (/[;"\n]/.test(t)) return '"' + t.replace(/"/g, '""') + '"';
+  return t;
+}
+
+// Converte "YYYY-MM-DD" pra "DD/MM/AAAA" — mais familiar em planilha
+// brasileira do que o formato ISO que o app usa internamente.
+function dataParaBR(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+document.getElementById('btnExportarCSV').addEventListener('click', () => {
+  // Usamos ponto-e-vírgula como separador (não vírgula): nossos valores já
+  // usam vírgula como separador decimal ("1.234,56"), e é assim que o
+  // Excel em português espera um CSV — com vírgula como separador de
+  // coluna, cada valor monetário seria cortado ao meio na hora de abrir.
+  const linhas = [['Nome', 'Valor', 'Categoria', 'Vencimento', 'Status'].join(';')];
+  dados.contas.forEach(c => {
+    linhas.push([
+      celulaCSV(c.nome || ''),
+      celulaCSV(formatarMoedaInput(c.valor)),
+      celulaCSV(c.categoria || ''),
+      celulaCSV(dataParaBR(c.vencimento)),
+      celulaCSV(c.status || 'Pendente')
+    ].join(';'));
+  });
+  // O "\uFEFF" (BOM) no início não aparece na tela — é um sinal invisível
+  // que avisa o Excel que o arquivo é UTF-8. Sem ele, acentos e "ç" viram
+  // caracteres estranhos quando alguém abre o CSV no Excel do Windows.
+  const conteudo = '\uFEFF' + linhas.join('\r\n');
+  const blob = new Blob([conteudo], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `controle-financeiro-contas-${hoje}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+});
+
 document.getElementById('btnImportarBackup').addEventListener('click', () => {
   document.getElementById('inputImportarBackup').click();
 });
@@ -731,26 +1285,37 @@ document.getElementById('inputImportarBackup').addEventListener('change', (e) =>
   if (!arquivo) return;
 
   const leitor = new FileReader();
-  leitor.onload = () => {
-    let novosDados;
+  leitor.onload = async () => {
+    let bruto;
     try {
-      novosDados = JSON.parse(leitor.result);
+      bruto = JSON.parse(leitor.result);
     } catch (err) {
       statusEl.textContent = '⚠️ Esse arquivo não é um backup válido.';
-      return;
-    }
-    // Confirmação de segurança: importar substitui o que está salvo agora.
-    if (!confirm('Isso vai substituir os dados atuais deste aparelho pelos do arquivo. Continuar?')) {
       e.target.value = '';
       return;
     }
-    // Mantém a estrutura padrão como base e sobrescreve só com o que veio no
-    // arquivo — assim, se o backup for de uma versão mais antiga do app
-    // (sem algum campo novo), o app não quebra por falta desse campo.
-    dados = Object.assign({
-      tema: 'light', salario: 0, valorSemana: 0, valorSabado: 0, valorDomingo: 0,
-      contas: [], diasTrabalhados: {}, valoresPersonalizados: {}, historicoMeses: []
-    }, novosDados);
+    let novosDados;
+    try {
+      novosDados = normalizarBackup(bruto);
+    } catch (err) {
+      // JSON até válido, mas com formato errado (ex: "contas" não é lista).
+      // Sem essa validação, isso derrubaria o app na hora de desenhar a tela.
+      statusEl.textContent = '⚠️ Esse arquivo não tem o formato de um backup deste app.';
+      e.target.value = '';
+      return;
+    }
+    // Confirmação de segurança: importar substitui o que está salvo agora.
+    const ok = await confirmarModal({
+      titulo: 'Importar backup',
+      mensagem: 'Isso vai substituir os dados atuais deste aparelho pelos do arquivo. Continuar?',
+      textoConfirmar: 'Importar',
+      perigo: true
+    });
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+    dados = novosDados;
     salvar();
     aplicarDadosNaTela();
     statusEl.textContent = '✅ Backup importado com sucesso!';
@@ -893,15 +1458,23 @@ async function sincronizarComANuvem(user, fb) {
 
     if (snap.exists()) {
       const dadosNuvem = snap.data();
-      const temDadosLocaisReais = dados.contas.length > 0 || Number(dados.salario) > 0;
+      // Antes só olhava contas/salário — alguém que só registrou dias
+      // trabalhados (sem cadastrar conta nem salário) tinha os dados
+      // sobrescritos sem aviso ao entrar em outro aparelho.
+      const temDadosLocaisReais = dados.contas.length > 0
+        || Number(dados.salario) > 0
+        || Object.keys(dados.diasTrabalhados || {}).length > 0
+        || Object.keys(dados.valoresPersonalizados || {}).length > 0
+        || (dados.historicoMeses || []).length > 0;
 
       let usarNuvem = true;
       if (temDadosLocaisReais) {
-        usarNuvem = confirm(
-          'Encontramos dados salvos na nuvem dessa conta.\n\n' +
-          'Clique OK para usar os dados da NUVEM (substitui os deste aparelho).\n' +
-          'Clique Cancelar para manter os dados DESTE APARELHO (substitui os da nuvem).'
-        );
+        usarNuvem = await confirmarModal({
+          titulo: 'Dados encontrados na nuvem',
+          mensagem: 'Encontramos dados salvos na nuvem dessa conta. O que você quer manter?',
+          textoConfirmar: 'Usar os da nuvem',
+          textoCancelar: 'Manter os deste aparelho'
+        });
       }
 
       if (usarNuvem) {
@@ -984,7 +1557,7 @@ if ('serviceWorker' in navigator) {
 // já mostra "0,00" como dica visual, sem isso contar como valor de verdade.
 function preencherCampoNumerico(id, valor) {
   const el = document.getElementById(id);
-  el.value = (Number(valor) === 0) ? '' : valor;
+  el.value = (Number(valor) === 0) ? '' : formatarMoedaInput(valor);
 }
 
 // ===== Inicialização =====
@@ -994,6 +1567,7 @@ function aplicarDadosNaTela() {
   preencherCampoNumerico('valorSemana', dados.valorSemana);
   preencherCampoNumerico('valorSabado', dados.valorSabado);
   preencherCampoNumerico('valorDomingo', dados.valorDomingo);
+  document.getElementById('ordenarContas').value = dados.ordenarContasPor || 'vencimento';
   renderContas();
   renderCalendario();
   renderResumo();
@@ -1022,4 +1596,57 @@ function iniciar() {
   ligarListenerDeConta();
 }
 
+// ===== Atalhos de teclado =====
+// Aviso importante: Ctrl+N ("nova janela") é reservado pelo próprio
+// navegador em praticamente todo desktop (Chrome, Firefox, Edge) — o
+// preventDefault() abaixo não consegue bloquear isso, então esse atalho só
+// funciona de verdade quando o app está instalado como PWA (sem a barra do
+// navegador por cima). Ctrl+B costuma ser mais seguro de interceptar.
+document.addEventListener('keydown', (e) => {
+  const alvoEhCampo = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
+  const combo = e.ctrlKey || e.metaKey;
+
+  if (combo && !alvoEhCampo && e.key.toLowerCase() === 'n') {
+    e.preventDefault();
+    document.getElementById('btnAddConta').click();
+  } else if (combo && !alvoEhCampo && e.key.toLowerCase() === 'b') {
+    e.preventDefault();
+    document.getElementById('btnBackup').click();
+  } else if (e.key === 'Escape') {
+    // O modal de confirmação/alerta já trata o Esc sozinho (tem sua própria
+    // Promise pra resolver) — aqui só fechamos os modais "simples", que não
+    // dependem de resolver nada, pra não interferir naquele fluxo.
+    document.querySelectorAll('.modal-fundo.aberto').forEach(modal => {
+      if (modal.id !== 'modalConfirmacao') modal.classList.remove('aberto');
+    });
+  }
+});
+
 iniciar();
+
+// ===== Sincronização entre abas =====
+// Cenário: a pessoa abre o app em duas abas (ou app + atalho na tela
+// inicial), edita numa, volta pra outra. Sem isso, a aba "velha" ainda tem
+// os dados antigos na memória — e se ela salvar algo depois, sobrescreve
+// silenciosamente a edição mais nova que estava só na outra aba.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  // Se essa aba tem uma escrita pendente (debounce ainda não disparou), ela
+  // tem uma edição mais recente que qualquer coisa gravada no disco agora
+  // — não vale a pena arriscar descartar o que a pessoa acabou de digitar.
+  if (saveTimeout) return;
+  try {
+    const bruto = localStorage.getItem(STORAGE_KEY);
+    if (!bruto) return;
+    const doDisco = JSON.parse(bruto);
+    // Só re-renderiza se o conteúdo realmente for diferente — evita
+    // redesenhar a tela à toa toda vez que a pessoa só troca de aba e volta.
+    if (JSON.stringify(doDisco) === JSON.stringify(dados)) return;
+    dados = normalizarBackup(doDisco);
+    aplicarDadosNaTela();
+  } catch (e) {
+    // Disco corrompido nesse instante específico: melhor manter o que já
+    // está na tela do que arriscar substituir por algo quebrado.
+    console.log('Não foi possível resincronizar entre abas.', e);
+  }
+});

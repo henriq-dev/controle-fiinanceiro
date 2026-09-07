@@ -73,10 +73,54 @@ Feito com **Firebase** (Authentication e/senha + Firestore), testado e funcionan
 - Confirmado no Firebase Console: a coleção `usuarios` recebe os documentos com os
   dados sincronizados corretamente (contas, diasTrabalhados, historicoMeses, salario, etc.)
 
+## ✅ v2.1.0 — Auditoria de bugs, acessibilidade e melhorias
+Rodada grande de correções e melhorias, a partir de uma auditoria técnica (bugs P0-P2 de aritmética financeira, validação, responsividade e visual) mais uma lista de 30 itens consolidada por urgência/esforço. Tudo continua HTML/CSS/JS puro, sem frameworks nem libs externas.
+
+**Bugs corrigidos:**
+- Aritmética monetária agora em centavos inteiros (eliminava erro tipo `0,10 + 0,20 = 0,30000000000000004` no total do mês)
+- Vírgula digitada no Android não era mais descartada (campos viraram `type="text"` + `inputmode="decimal"`, já que `type="number"` zerava o valor antes mesmo do JavaScript rodar)
+- Avanço de vencimento ao fechar o mês não pula mais meses curtos (31/01 → 28/02, nunca 03/03; testado com ano bissexto)
+- `localStorage` protegido contra falha silenciosa (mostra aviso na tela em vez de só logar no console)
+- Validação de schema no backup importado (JSON corrompido ou de formato errado não derruba mais o app)
+- Sobrescrita de dados entre abas abertas ao mesmo tempo (relê o disco ao voltar pra aba, sem perder edição em andamento)
+- Debounce da nuvem separado do debounce local (1,5s vs. 400ms) — antes cada pausa de digitação já disparava uma escrita no Firestore
+- `mesLabel` do histórico e categoria das contas protegidos contra injeção de HTML vindo de um backup adulterado
+
+**Segurança e acessibilidade:**
+- `confirm()`/`alert()` nativos (suprimidos em alguns PWAs iOS/WebView Android) substituídos por modal customizado próprio, com foco preso, Esc e clique-fora pra fechar
+- `aria-live` no indicador de status ("Salvo ✓", avisos de erro) — leitor de tela agora é avisado
+- Checagem de "tem dado local pra preservar" ao sincronizar com a nuvem agora considera diárias/histórico, não só contas/salário
+
+**Responsividade e visual:**
+- Tabela de contas vira cards empilhados no celular (antes exigia scroll horizontal)
+- `viewport-fit=cover` + `env(safe-area-inset-*)` + `dvh` — notch, barra de gestos e barra de URL sumindo/aparecendo
+- Todos os emojis de botões/títulos trocados por ícones SVG (herdam a cor do tema automaticamente)
+- Cores semânticas de entrada/saída no resumo do mês (verde pro que entra, vermelho pro que sai)
+- Máscara de moeda ao vivo nos campos de valor (formata "1.234,56" enquanto digita)
+
+**Novas funcionalidades:**
+- **Calendário mostra vencimento de contas**: dia com conta a vencer ganha um indicador (vermelho = pendente, verde = paga); tocar mostra quais contas vencem ali
+- Badge no topo avisando quantas contas estão atrasadas ou vencendo nos próximos 3 dias
+- Ordenar contas por vencimento, valor ou nome
+- Filtro por ano no histórico de meses fechados
+- Gráfico de pizza por categoria (SVG puro, mesmas cores do seletor de categoria)
+- 3 temas novos além do claro/escuro: **alto contraste** (preto/branco, pra baixa visão) e **noturno amarelado** (tons quentes, sem azul)
+- Exportar contas em `.csv` (separado do backup completo em `.json`), com BOM UTF-8 pra acentos não bagunçarem no Excel
+- Atalhos de teclado: Ctrl+N (nova conta — só funciona com o app instalado como PWA, navegadores desktop reservam esse atalho pra "nova janela"), Ctrl+B (backup), Esc (fecha modal)
+- Vibração curta ao marcar conta como paga e ao fechar o mês (em aparelhos com suporte)
+- Backup automático na nuvem a cada fechamento de mês (snapshot separado e imutável, além da sincronização normal)
+- Cache offline real no `sw.js` (estratégia "rede primeiro, cache como reserva" — sempre busca a versão mais nova quando online, funciona offline quando não tem internet)
+
+**Backlog restante (não implementado, cada um com uma ressalva):**
+- Onboarding guiado na primeira abertura — feature de UI inteira, não um ajuste pontual
+- Lembretes push — exige um backend disparando a notificação, não dá só no front
+- Fontes customizadas (Sora/Plus Jakarta Sans/IBM Plex Mono) — via Google Fonts seria uma dependência externa; pra manter 100% vanilla, precisaria baixar os `.woff2` e servir local
+
 ---
 
 ## Como retomar em uma conversa nova
 1. Abra uma conversa nova dentro deste mesmo Projeto (a memória do projeto ajuda a manter o contexto).
 2. Se quiser, anexe os arquivos atuais do repositório (`index.html`, `style.css`, `script.js`) pra eu conferir o estado exato.
-3. Diga: "Vamos continuar" — todo o roadmap planejado (v1.0.0 até v2.0.0) está completo.
-   Pergunte o que fazer a seguir: novas ideias, ajustes, ou revisão geral.
+3. Diga: "Vamos continuar" — o roadmap planejado (v1.0.0 até v2.1.0) está completo.
+   Resta só o backlog de grande escopo listado no fim da v2.1.0 (onboarding, push, fontes customizadas).
+   Pergunte o que fazer a seguir: esses itens, novas ideias, ou revisão geral.
