@@ -92,7 +92,99 @@
         <button class="btn-secundario" id="btnSair" style="width:100%;">Sair da conta</button>
       </div>
 
+      <!-- Bloqueio por PIN: independente de login/nuvem — é uma trava LOCAL
+           deste aparelho, pra alguém não abrir seus números só pegando seu
+           celular na mão. Não é criptografia de banco, é privacidade básica. -->
+      <div class="modal-secao">
+        <strong>Bloqueio por PIN</strong>
+        <p class="modal-texto" style="margin-top:6px; margin-bottom:10px;">
+          Pede um PIN de 4 dígitos toda vez que o app abrir neste aparelho.
+        </p>
+        <button class="btn-secundario" id="btnConfigurarPin" style="width:100%;">Definir PIN</button>
+        <button class="btn-secundario" id="btnRemoverPin" style="width:100%; display:none; color: var(--perigo);">Remover PIN</button>
+      </div>
+
+      <div class="modal-secao">
+        <button class="btn-secundario" id="btnVerTutorial" style="width:100%;">Rever tutorial inicial</button>
+      </div>
+
       <button class="btn-secundario" id="btnFecharModalConta" style="width:100%;">Fechar</button>
+    </div>
+  </div>
+
+  <!-- Modal genérico de pedir PIN — reaproveitado tanto pra criar/trocar/remover
+       o PIN quanto (em teoria) por qualquer outro fluxo que precise de um
+       código numérico curto no futuro. -->
+  <div class="modal-fundo" id="modalPin" role="dialog" aria-modal="true" aria-labelledby="pinTitulo">
+    <div class="modal-caixa modal-caixa-confirmacao">
+      <div class="modal-titulo" id="pinTitulo">PIN</div>
+      <div class="modal-texto" id="pinMensagem"></div>
+      <label for="pinInput" class="sr-only">Digite o PIN</label>
+      <input type="password" id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="••••" style="width:100%; text-align:center; font-size:22px; letter-spacing:0.3em; padding:10px; border-radius:8px; border:1px solid var(--borda); background:var(--cinza); color:var(--texto); margin-bottom:6px;">
+      <p class="status-save" id="pinErro" style="text-align:center; min-height:18px;"></p>
+      <div class="modal-acoes">
+        <button class="btn-secundario" id="pinBtnCancelar" style="margin-top:0;">Cancelar</button>
+        <button class="btn-add" id="pinBtnConfirmar" style="margin-top:0;">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de parcelamento: configura "parcela atual" e "total de parcelas"
+       de uma conta. Diferente do modal de PIN (que mascara os dígitos),
+       aqui os números precisam aparecer normalmente. -->
+  <div class="modal-fundo" id="modalParcelas" role="dialog" aria-modal="true" aria-labelledby="parcelaTitulo">
+    <div class="modal-caixa modal-caixa-confirmacao">
+      <div class="modal-titulo" id="parcelaTitulo">Parcelamento</div>
+      <div class="modal-texto">
+        Ex: "TV 10x de R$ 150" — parcela atual 1, total 10. A cada "Fechar mês", a parcela avança sozinha; quando chegar na última, a conta some da lista.
+      </div>
+      <div class="parcela-campos">
+        <div>
+          <label for="parcelaAtualInput">Parcela atual</label>
+          <input type="number" id="parcelaAtualInput" min="1" inputmode="numeric">
+        </div>
+        <span class="parcela-barra">/</span>
+        <div>
+          <label for="parcelaTotalInput">Total de parcelas</label>
+          <input type="number" id="parcelaTotalInput" min="1" inputmode="numeric">
+        </div>
+      </div>
+      <p class="status-save" id="parcelaErro" style="text-align:center; min-height:18px;"></p>
+      <button class="btn-secundario" id="parcelaBtnRemover" style="width:100%; display:none; color: var(--perigo); margin-bottom:8px;">Remover parcelamento</button>
+      <div class="modal-acoes">
+        <button class="btn-secundario" id="parcelaBtnCancelar" style="margin-top:0;">Cancelar</button>
+        <button class="btn-add" id="parcelaBtnSalvar" style="margin-top:0;">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tela de bloqueio inicial: cobre o app inteiro até a pessoa digitar o
+       PIN certo. Some da tela (classe "aberto"), não do HTML — os dados já
+       carregaram por trás, só a VISÃO fica bloqueada; não é criptografia
+       de verdade, é só uma barreira contra "alguém pegou meu celular". -->
+  <div class="modal-fundo tela-bloqueio" id="telaBloqueio" role="dialog" aria-modal="true" aria-labelledby="bloqueioTitulo">
+    <div class="modal-caixa">
+      <div class="modal-titulo" id="bloqueioTitulo">Digite o PIN</div>
+      <label for="bloqueioInput" class="sr-only">Digite o PIN pra desbloquear</label>
+      <input type="password" id="bloqueioInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="••••" style="width:100%; text-align:center; font-size:26px; letter-spacing:0.35em; padding:12px; border-radius:8px; border:1px solid var(--borda); background:var(--cinza); color:var(--texto); margin-bottom:8px;">
+      <p class="status-save" id="bloqueioErro" style="text-align:center; min-height:18px;"></p>
+      <button class="btn-add" id="bloqueioBtnEntrar" style="width:100%;">Entrar</button>
+    </div>
+  </div>
+
+  <!-- Onboarding: tutorial rápido de poucos passos, mostrado só na primeira
+       abertura do app (controlado por dados.onboardingVisto). A pessoa pode
+       pular a qualquer momento, e dá pra rever depois em "Minha conta". -->
+  <div class="modal-fundo" id="modalOnboarding" role="dialog" aria-modal="true" aria-labelledby="onboardingTitulo">
+    <div class="modal-caixa">
+      <p class="onboarding-passo-contador" id="onboardingContador"></p>
+      <div class="modal-titulo" id="onboardingTitulo"></div>
+      <div class="modal-texto" id="onboardingTexto"></div>
+      <div class="onboarding-acoes">
+        <button class="btn-secundario" id="onboardingBtnPular">Pular</button>
+        <button class="btn-secundario" id="onboardingBtnAnterior" style="display:none;">Voltar</button>
+        <button class="btn-add" id="onboardingBtnProximo">Próximo</button>
+      </div>
     </div>
   </div>
 
@@ -179,11 +271,61 @@
           <label>Falta pagar</label>
           <div class="valor" id="faltaPagar">R$ 0,00</div>
         </div>
+        <div class="resumo-item saida">
+          <label>Gastos avulsos</label>
+          <div class="valor" id="gastosAvulsosResumo">R$ 0,00</div>
+        </div>
         <div class="resumo-item destaque">
           <label>O QUE VAI SOBRAR</label>
           <div class="valor" id="sobra">R$ 0,00</div>
         </div>
       </div>
+    </section>
+
+    <!-- Resumo da semana: mesma estrutura do resumo mensal, só que baseado
+         na semana atual (domingo a sábado) em vez do mês inteiro. Sempre
+         usa a semana de HOJE de verdade, independente de qual mês está
+         sendo navegado no calendário. -->
+    <section class="card" aria-labelledby="tituloResumoSemanal">
+      <h2 id="tituloResumoSemanal">Resumo da semana</h2>
+      <div class="resumo-grid">
+        <div class="resumo-item entrada">
+          <label>Diárias da semana</label>
+          <div class="valor" id="diariasSemana">R$ 0,00</div>
+        </div>
+        <div class="resumo-item saida">
+          <label>Contas vencendo</label>
+          <div class="valor" id="contasSemana">R$ 0,00</div>
+        </div>
+        <div class="resumo-item saida">
+          <label>Falta pagar (semana)</label>
+          <div class="valor" id="faltaPagarSemana">R$ 0,00</div>
+        </div>
+        <div class="resumo-item destaque">
+          <label>SOBRA DA SEMANA</label>
+          <div class="valor" id="sobraSemana">R$ 0,00</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Meta de economia: um valor-alvo por mês, comparado com a sobra
+         do mês atual (a mesma que aparece no Resumo do mês). -->
+    <section class="card" aria-labelledby="tituloMeta">
+      <h2 id="tituloMeta">Meta de economia</h2>
+      <div class="meta-linha">
+        <label for="metaEconomia">Quero guardar por mês:</label>
+        <div class="meta-input-wrap">
+          <span>R$</span>
+          <input type="text" id="metaEconomia" placeholder="0,00" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]{0,2}">
+        </div>
+      </div>
+      <div id="metaProgressoWrap" style="display:none;">
+        <div class="meta-barra-trilho">
+          <div class="meta-barra-preenchida" id="metaBarraPreenchida" style="width:0%;"></div>
+        </div>
+        <p class="meta-progresso-texto" id="metaProgressoTexto"></p>
+      </div>
+      <p class="vazio-aviso" id="metaSemValor" style="display:none;">Defina um valor acima para acompanhar o progresso.</p>
     </section>
 
     <!-- Gráfico: visão rápida de entradas vs. saídas do mês -->
@@ -206,6 +348,11 @@
           </select>
         </div>
       </div>
+      <div class="busca-contas-wrap">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="busca-contas-icone"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+        <label for="buscaContas" class="sr-only">Buscar conta por nome ou categoria</label>
+        <input type="text" id="buscaContas" placeholder="Buscar por nome ou categoria..." autocomplete="off">
+      </div>
       <div class="table-scroll">
       <table>
         <thead>
@@ -222,6 +369,7 @@
       </table>
       </div>
       <p class="vazio-aviso" id="avisoVazio">Nenhuma conta cadastrada ainda. Adicione a primeira abaixo.</p>
+      <p class="vazio-aviso" id="avisoBuscaSemResultado" style="display:none;">Nenhuma conta encontrada pra essa busca.</p>
       <button class="btn-add" id="btnAddConta">+ adicionar conta</button>
       <div class="linha-total">
         <span>Total geral</span>
@@ -229,8 +377,36 @@
       </div>
       <div id="resumoCategorias" class="resumo-categorias"></div>
       <div class="acoes-mes">
+        <button class="btn-secundario" id="btnDuplicarMes">Duplicar mês</button>
         <button class="btn-secundario" id="btnFecharMes">Fechar mês</button>
         <button class="btn-secundario" id="btnHistorico">Histórico</button>
+      </div>
+    </section>
+
+    <!-- Gastos avulsos: diferente das Contas (fixas, com vencimento), aqui
+         é pra despesa do dia a dia — "gastei R$ 40 no lanche hoje". Cada
+         gasto tem uma DATA (não um vencimento) e é filtrado pelo mês que
+         está sendo exibido, igual às diárias — não "reseta" ao fechar o
+         mês, só sai de vista quando você navega pra outro mês. -->
+    <section class="card" aria-labelledby="tituloGastosAvulsos">
+      <h2 id="tituloGastosAvulsos">Gastos avulsos</h2>
+      <div class="modal-texto" style="margin-bottom:10px;">
+        Despesas do dia a dia, diferente das contas fixas — tipo lanche, uber, uma comprinha.
+      </div>
+      <div class="gasto-avulso-form">
+        <input type="text" id="gastoAvulsoDescricao" placeholder="Descrição (ex: lanche)" autocomplete="off">
+        <div class="meta-input-wrap">
+          <span>R$</span>
+          <input type="text" id="gastoAvulsoValor" class="campo-valor-mono" placeholder="0,00" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]{0,2}">
+        </div>
+        <input type="date" id="gastoAvulsoData">
+        <button class="btn-add" id="btnAddGastoAvulso">Adicionar</button>
+      </div>
+      <div id="listaGastosAvulsos"></div>
+      <p class="vazio-aviso" id="avisoSemGastosAvulsos">Nenhum gasto avulso registrado neste mês.</p>
+      <div class="linha-total">
+        <span>Total de gastos avulsos no mês</span>
+        <span id="totalGastosAvulsosRodape">R$ 0,00</span>
       </div>
     </section>
 
@@ -242,6 +418,7 @@
           Resumo de cada mês fechado. As contas de cada mês continuam guardadas aqui,
           mesmo depois de "Fechar mês" resetar a lista atual.
         </div>
+        <div id="graficoEvolucao"></div>
         <div class="ordenar-wrap" style="margin-bottom:10px;">
           <label for="filtroHistoricoAno" class="sr-only">Filtrar por ano</label>
           <select id="filtroHistoricoAno" style="width:100%;">

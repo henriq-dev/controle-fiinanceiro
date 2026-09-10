@@ -1,3 +1,47 @@
+/* ===== Fontes customizadas =====
+   Baixadas do repositório oficial do Google Fonts (licença SIL Open Font
+   License — permite redistribuir) e servidas AQUI MESMO, junto com o
+   resto do app (pasta fonts/), em vez de carregar de um CDN como o Google
+   Fonts. Isso mantém o app 100% vanilla/offline: nada de dependência
+   externa, e o service worker já cacheia esses arquivos automaticamente
+   junto com o resto.
+   font-display: swap -> mostra o texto com a fonte do sistema IMEDIATAMENTE
+   e troca pra fonte customizada assim que ela terminar de carregar, em vez
+   de deixar a tela em branco esperando a fonte (ruim principalmente em
+   conexão lenta). */
+@font-face {
+  font-family: 'Sora';
+  src: url('fonts/Sora.woff2') format('woff2');
+  font-weight: 100 800; /* fonte variável: aceita qualquer peso nessa faixa */
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('fonts/PlusJakartaSans.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('fonts/PlusJakartaSans-Italic.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/IBMPlexMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/IBMPlexMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
 /* ===== Variáveis de tema (claro/escuro) ===== */
 :root, [data-theme="light"] {
   --azul: #1f4e78;
@@ -95,7 +139,7 @@
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 body {
-  font-family: -apple-system, "Segoe UI", Roboto, Arial, Helvetica, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, "Segoe UI", Roboto, Arial, Helvetica, sans-serif;
   background: var(--cinza);
   margin: 0;
   /* max() garante pelo menos 20px em qualquer aparelho, e cresce sozinho
@@ -158,6 +202,7 @@ input::placeholder {
 }
 
 h1 {
+  font-family: 'Sora', 'Plus Jakarta Sans', -apple-system, sans-serif;
   color: var(--azul);
   font-size: 21px;
   margin: 0 0 2px 0;
@@ -217,6 +262,7 @@ h1 {
 }
 
 .card h2 {
+  font-family: 'Sora', 'Plus Jakarta Sans', -apple-system, sans-serif;
   font-size: 15px;
   color: var(--azul);
   margin: 0 0 12px 0;
@@ -251,6 +297,33 @@ h1 {
   color: var(--texto);
 }
 
+.busca-contas-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+.busca-contas-icone {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--texto-terciario);
+  pointer-events: none;
+}
+#buscaContas {
+  width: 100%;
+  padding: 9px 12px 9px 34px;
+  border-radius: 8px;
+  border: 1px solid var(--borda);
+  background: var(--cinza);
+  color: var(--texto);
+  font-family: inherit;
+}
+#buscaContas:focus {
+  outline: none;
+  border-color: var(--azul);
+  background: var(--card-bg);
+}
+
 /* ===== Resumo ===== */
 .resumo-grid {
   display: grid;
@@ -269,9 +342,17 @@ h1 {
   margin-bottom: 4px;
 }
 .resumo-item .valor {
-  font-size: 17px;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  font-size: 19px;
   font-weight: bold;
   color: var(--texto);
+  /* tabular-nums: cada dígito ocupa a mesma largura (0 tem a mesma
+     largura que 8, por exemplo). Sem isso, números com dígitos diferentes
+     "dançam" de largura e ficam menos fáceis de comparar de relance —
+     é o mesmo motivo pelo qual relógios digitais e placares de esporte
+     sempre usam fontes ou esse recurso pra manter os dígitos alinhados. */
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 /* Cores semânticas: verde pro que entra, vermelho pro que sai — só no
    número e numa borda fina, pra ficar fácil de escanear rápido sem pesar
@@ -286,7 +367,7 @@ h1 {
 }
 .resumo-item.destaque .valor {
   color: var(--azul-texto-forte);
-  font-size: 22px;
+  font-size: 27px;
 }
 /* Quando o que sobra fica negativo, troca o degradê azul por um aviso vermelho */
 .resumo-item.destaque.negativo {
@@ -299,10 +380,12 @@ h1 {
   width: 100%;
   border: none;
   background: transparent;
-  font-size: 17px !important;
+  font-size: 19px !important;
   font-weight: bold;
-  font-family: inherit;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
   color: var(--texto);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   padding: 0;
 }
 
@@ -349,6 +432,14 @@ td input[type="text"]:hover, td input[type="number"]:hover,
 td input[type="text"]:focus, td input[type="number"]:focus {
   border-color: var(--borda);
   background: var(--hover-bg);
+}
+/* Fonte monoespaçada pra campos de valor em dinheiro — usada onde a classe
+   genérica de input não dá pra diferenciar "campo de nome" de "campo de
+   valor" (ex: nas duas colunas da tabela de contas, que compartilham o
+   mesmo seletor base). */
+.campo-valor-mono {
+  font-family: 'IBM Plex Mono', 'Courier New', monospace !important;
+  font-variant-numeric: tabular-nums;
 }
 select.status {
   width: 100%;
@@ -485,11 +576,13 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
 
 .acoes-mes {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
 }
 .acoes-mes .btn-secundario {
   flex: 1;
+  min-width: 100px;
   margin-top: 0;
   font-size: 13px;
   padding: 10px 8px;
@@ -539,6 +632,12 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   border-radius: 6px;
   flex-shrink: 0;
 }
+
+/* Tela de bloqueio por PIN: precisa ficar ACIMA de qualquer outro modal
+   (z-index maior que os 100 normais), porque ela pode aparecer bem no
+   início, antes de qualquer outra interação — inclusive por cima de um
+   modal que porventura já estivesse aberto. */
+#telaBloqueio { z-index: 500; }
 .cat-barra-linha {
   display: flex;
   align-items: center;
@@ -573,6 +672,112 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
 .cat-barra-preenchida[data-categoria="Saúde"] { background: #e05c6f; }
 .cat-barra-preenchida[data-categoria="Lazer"] { background: #3aa65c; }
 .cat-barra-preenchida[data-categoria="Educação"] { background: #2ea8a8; }
+
+/* ===== Meta de economia ===== */
+.meta-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.meta-linha label {
+  font-size: 13px;
+  color: var(--texto-secundario);
+}
+.meta-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--cinza);
+}
+.meta-input-wrap span { font-size: 13px; color: var(--texto-secundario); }
+#metaEconomia {
+  border: none;
+  background: transparent;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  font-weight: bold;
+  color: var(--texto);
+  width: 90px;
+  font-variant-numeric: tabular-nums;
+}
+.meta-barra-trilho {
+  background: var(--cinza);
+  border-radius: 6px;
+  height: 16px;
+  overflow: hidden;
+}
+.meta-barra-preenchida {
+  height: 100%;
+  border-radius: 6px;
+  background: var(--azul);
+  transition: width 0.3s ease;
+}
+/* Meta batida ou superada: a barra vira verde — é uma boa notícia,
+   merece uma cor diferente da barra "em andamento" (azul padrão). */
+.meta-barra-preenchida.batida { background: var(--verde-texto); }
+.meta-progresso-texto {
+  font-size: 12px;
+  color: var(--texto-secundario);
+  margin: 6px 0 0 0;
+  text-align: center;
+}
+
+/* ===== Gastos avulsos ===== */
+.gasto-avulso-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.gasto-avulso-form input[type="text"],
+.gasto-avulso-form input[type="date"] {
+  grid-column: span 1;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--borda);
+  background: var(--cinza);
+  color: var(--texto);
+  font-family: inherit;
+  min-height: 40px;
+}
+#gastoAvulsoDescricao { grid-column: 1 / -1; }
+.gasto-avulso-form .meta-input-wrap { min-height: 40px; box-sizing: border-box; }
+.gasto-avulso-form .meta-input-wrap input { width: 100%; }
+#btnAddGastoAvulso { grid-column: 1 / -1; margin-top: 0; }
+
+.gasto-avulso-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--borda);
+}
+.gasto-avulso-linha:last-child { border-bottom: none; }
+.gasto-avulso-info { display: flex; flex-direction: column; min-width: 0; }
+.gasto-avulso-descricao {
+  font-size: 14px;
+  color: var(--texto);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gasto-avulso-data {
+  font-size: 11px;
+  color: var(--texto-terciario);
+}
+.gasto-avulso-valor {
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  font-weight: bold;
+  color: var(--perigo);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
 .cat-barra-valor {
   width: 68px;
   flex-shrink: 0;
@@ -685,7 +890,7 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
 
 .calendario {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, 1fr) auto;
   gap: 5px;
 }
 .cal-cabecalho {
@@ -715,7 +920,7 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
 }
 .dia:active { background: var(--azul-claro); }
 .dia .num { font-weight: bold; }
-.dia .val { font-size: 9px; color: var(--texto-terciario); }
+.dia .val { font-family: 'IBM Plex Mono', 'Courier New', monospace; font-size: 9px; color: var(--texto-terciario); }
 .dia.trabalhado {
   background: var(--verde);
   border-color: #7dc98a;
@@ -747,6 +952,30 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
    se sobrepor. É um <button> de verdade (não só um ::after decorativo),
    porque precisa ser clicável pra mostrar quais contas vencem ali, sem
    contar como toque no dia (que marca/desmarca "trabalhado"). */
+/* Botão "marcar semana inteira" — fecha a 8ª coluna de cada linha do
+   calendário. align-self: stretch (herdado do grid) já faz ele esticar
+   pra mesma altura da linha, sem precisar fixar altura na mão. */
+.btn-semana {
+  width: 22px;
+  min-width: 22px;
+  border: 1px dashed var(--borda);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto-terciario);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  padding: 0;
+}
+.btn-semana:hover, .btn-semana:active {
+  background: var(--verde);
+  color: var(--verde-texto);
+  border-style: solid;
+  border-color: var(--verde-texto);
+}
+
 .dia-venc-bolinha {
   position: absolute;
   top: 1px;
@@ -790,11 +1019,12 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   .card { padding: 12px; }
   .resumo-grid { gap: 8px; }
   .calendario { gap: 3px; }
+  .btn-semana { width: 18px; min-width: 18px; }
   .diaria-config { gap: 6px; }
   h1 { font-size: 18px; }
   .logo { width: 38px; height: 38px; }
-  .resumo-item .valor { font-size: 15px; }
-  .resumo-item.destaque .valor { font-size: 19px; }
+  .resumo-item .valor { font-size: 17px; }
+  .resumo-item.destaque .valor { font-size: 23px; }
 }
 
 /* Telas maiores (tablet/desktop): calendário não precisa esticar tanto */
@@ -814,6 +1044,17 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   justify-content: center;
 }
 .modal-fundo.aberto { display: flex; }
+@keyframes modal-entrada {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Toda vez que um modal passa de display:none pra display:flex, o
+   navegador trata como uma pintura nova daquele elemento — por isso a
+   animação sempre "reinicia do zero" sozinha, sem precisar de nenhum
+   truque de JavaScript pra disparar de novo a cada abertura. */
+.modal-fundo.aberto .modal-caixa {
+  animation: modal-entrada 0.22s ease-out;
+}
 .modal-caixa {
   background: var(--card-bg);
   color: var(--texto);
@@ -904,6 +1145,61 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   border: none;
 }
 .btn-perigo:hover, .btn-perigo:active { opacity: 0.85; }
+
+/* ===== Onboarding ===== */
+.onboarding-passo-contador {
+  font-size: 11px;
+  color: var(--texto-terciario);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 4px 0;
+}
+.onboarding-acoes {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.onboarding-acoes button { flex: 1; margin-top: 0; }
+#onboardingBtnPular { flex: 0 0 auto; }
+
+/* ===== Parcelamento ===== */
+.parcela-campos {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 12px 0;
+}
+.parcela-campos > div { flex: 1; }
+.parcela-campos label {
+  display: block;
+  font-size: 11px;
+  color: var(--texto-secundario);
+  margin-bottom: 4px;
+}
+.parcela-campos input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--borda);
+  background: var(--cinza);
+  color: var(--texto);
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  text-align: center;
+  font-size: 16px;
+}
+.parcela-barra { color: var(--texto-terciario); padding-bottom: 10px; font-weight: bold; }
+
+.badge-parcela {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  background: var(--azul-claro);
+  color: var(--azul-texto-forte);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
 
 /* ===== Modal: ajustar valor de dias específicos ===== */
 .linha-dia-editar {
@@ -1003,3 +1299,40 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   .venc-wrap { justify-content: flex-end; min-width: 0; }
   .categoria-select, select.status { width: auto; max-width: 65%; }
 }
+
+/* ===== Transição suave ao trocar de tema =====
+   Fica desligada por padrão (só o body tem uma transição básica, linha
+   ~108) e é LIGADA por 300ms só quando a pessoa escolhe um tema
+   ativamente no modal — não o tempo todo. Se ficasse sempre ligada em
+   tudo, ela também animaria toda vez que qualquer classe muda uma cor por
+   outro motivo (ex: "sobra" virando vermelha, bolinha de vencimento
+   trocando de cor) e deixaria essas mudanças mais lentas do que deveriam.
+   Isso é ligado/desligado pelo JavaScript, na hora de escolher o tema. */
+html.tema-transicionando, html.tema-transicionando * {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease !important;
+}
+
+/* Quem ativa "reduzir movimento" no sistema operacional está dizendo que
+   animação/transição pode incomodar (enjoo, distração, sensibilidade
+   vestibular) — respeitamos isso desligando TODAS as animações/transições
+   novas que adicionamos (tema, abrir modal, marcar dia). */
+@media (prefers-reduced-motion: reduce) {
+  html.tema-transicionando, html.tema-transicionando * {
+    transition: none !important;
+  }
+  .modal-fundo.aberto .modal-caixa,
+  .dia.pop {
+    animation: none !important;
+  }
+}
+
+/* Pequeno "pop" ao marcar um dia como trabalhado — só dispara no dia que
+   acabou de ser clicado (ver comentário em renderCalendario, no JS, sobre
+   como isso é controlado pra não replicar em todos os dias marcados toda
+   vez que o calendário é redesenhado por qualquer outro motivo). */
+@keyframes dia-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.dia.pop { animation: dia-pop 0.28s ease; }

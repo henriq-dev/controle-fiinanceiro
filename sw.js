@@ -12,7 +12,7 @@
 // próxima atualização do app força os aparelhos das pessoas a descartarem
 // o cache antigo e baixarem tudo de novo — é assim que se invalida cache
 // de service worker, não tem outro jeito.
-const CACHE_NAME = 'controle-financeiro-v1';
+const CACHE_NAME = 'controle-financeiro-v2';
 
 // Arquivos "essenciais": sem eles o app nem abre. Pré-carregados na
 // instalação, pra já existir alguma coisa no cache mesmo antes da pessoa
@@ -24,7 +24,12 @@ const ARQUIVOS_ESSENCIAIS = [
   './script.js',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './fonts/Sora.woff2',
+  './fonts/PlusJakartaSans.woff2',
+  './fonts/PlusJakartaSans-Italic.woff2',
+  './fonts/IBMPlexMono-Regular.woff2',
+  './fonts/IBMPlexMono-Bold.woff2'
 ];
 
 self.addEventListener('install', (event) => {

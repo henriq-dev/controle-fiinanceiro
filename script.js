@@ -60,11 +60,19 @@ let dados = {
   diasTrabalhados: {},        // "YYYY-M-D": true
   valoresPersonalizados: {},  // "YYYY-M-D": valor específico daquele dia (sobrescreve o padrão)
   historicoMeses: [],         // meses já fechados, com o resumo e a lista de contas de cada um
-  ordenarContasPor: 'vencimento' // 'vencimento' | 'valor' | 'nome' — lembrado entre sessões
+  ordenarContasPor: 'vencimento', // 'vencimento' | 'valor' | 'nome' — lembrado entre sessões
+  pinHash: null, // hash SHA-256 do PIN de bloqueio local, ou null se não tiver
+  metaEconomia: 0, // quanto a pessoa quer guardar por mês; 0 = sem meta definida
+  gastosAvulsos: [], // despesas do dia a dia, cada uma com sua própria data — { descricao, valor, data }
+  onboardingVisto: false // true depois que a pessoa vê o tutorial inicial (ou pula ele)
 };
 
 const hojeInicial = new Date();
 let mesExibido = { ano: hojeInicial.getFullYear(), mes: hojeInicial.getMonth() };
+// Controla qual dia deve "pular" (animação) na próxima renderização do
+// calendário — null na maior parte do tempo, só recebe uma chave no
+// instante entre marcar um dia e o calendário ser redesenhado.
+let ultimoDiaMarcadoPop = null;
 
 // Deixa só a primeira letra maiúscula (não usamos CSS text-transform aqui
 // porque "capitalize" deixaria toda palavra maiúscula, incluindo o "de"
@@ -177,10 +185,20 @@ function normalizarBackup(bruto) {
     valorSabado: lerMoeda(bruto.valorSabado),
     valorDomingo: lerMoeda(bruto.valorDomingo),
     ordenarContasPor: ['vencimento', 'valor', 'nome'].includes(bruto.ordenarContasPor) ? bruto.ordenarContasPor : 'vencimento',
+    // Só aceita null ou algo com a cara de um hash SHA-256 (64 caracteres
+    // hexadecimais) — qualquer outra coisa vira null, pra nunca travar a
+    // pessoa fora do próprio app com um valor de backup corrompido/malicioso.
+    pinHash: (typeof bruto.pinHash === 'string' && /^[0-9a-f]{64}$/.test(bruto.pinHash)) ? bruto.pinHash : null,
+    metaEconomia: lerMoeda(bruto.metaEconomia),
     contas: [],
     diasTrabalhados: {},
     valoresPersonalizados: {},
-    historicoMeses: []
+    historicoMeses: [],
+    gastosAvulsos: [],
+    // Se o backup é de antes dessa feature existir (undefined), assume que
+    // já viu — quem está restaurando um backup já tem dados, não é uma
+    // pessoa nova abrindo o app pela primeira vez.
+    onboardingVisto: typeof bruto.onboardingVisto === 'boolean' ? bruto.onboardingVisto : true
   };
 
   if (Array.isArray(bruto.contas)) {
@@ -191,7 +209,15 @@ function normalizarBackup(bruto) {
         valor: lerMoeda(c.valor),
         categoria: typeof c.categoria === 'string' ? c.categoria.slice(0, 60) : '',
         vencimento: (typeof c.vencimento === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.vencimento)) ? c.vencimento : '',
-        status: (c.status === 'Pago') ? 'Pago' : 'Pendente'
+        status: (c.status === 'Pago') ? 'Pago' : 'Pendente',
+        // Conta parcelada: { atual, total }, ambos inteiros positivos com
+        // atual <= total. Qualquer coisa fora disso vira "não parcelada"
+        // (null) — mais seguro que travar a importação inteira por causa
+        // de um campo secundário malformado.
+        parcela: (c.parcela && Number.isInteger(c.parcela.atual) && Number.isInteger(c.parcela.total)
+          && c.parcela.atual >= 1 && c.parcela.total >= 1 && c.parcela.atual <= c.parcela.total)
+          ? { atual: c.parcela.atual, total: c.parcela.total }
+          : null
       }));
   }
 
@@ -227,6 +253,16 @@ function normalizarBackup(bruto) {
         // histórico quebraria renderHistorico inteiro na hora de fazer
         // mes.contas.length (TypeError: Cannot read length of undefined).
         contas: Array.isArray(m.contas) ? m.contas.filter(c => c && typeof c === 'object') : []
+      }));
+  }
+
+  if (Array.isArray(bruto.gastosAvulsos)) {
+    normalizado.gastosAvulsos = bruto.gastosAvulsos
+      .filter(g => g && typeof g === 'object')
+      .map(g => ({
+        descricao: typeof g.descricao === 'string' ? g.descricao.slice(0, 100) : '',
+        valor: lerMoeda(g.valor),
+        data: (typeof g.data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(g.data)) ? g.data : ''
       }));
   }
 
@@ -324,6 +360,266 @@ function alertarModal(mensagem, titulo = 'Aviso') {
   return confirmarModal({ titulo, mensagem, textoConfirmar: 'Entendi', textoCancelar: '' })
     .then(() => {});
 }
+
+// ===== Bloqueio por PIN =====
+// Isso NÃO é criptografia de verdade — é uma trava de privacidade básica
+// pra alguém não conseguir abrir seus números só pegando o celular
+// destravado na mesa. Por isso é aceitável guardar só o hash (não o PIN
+// em texto puro) usando a Web Crypto API nativa do navegador (SHA-256) —
+// já dá uma camada de proteção contra "abrir o F12 e ler o localStorage
+// direto", sem precisar de nenhuma biblioteca externa.
+async function hashPin(pin) {
+  const bytes = new TextEncoder().encode(pin);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+let _pinResolver = null;
+
+function _fecharModalPin(valor) {
+  document.getElementById('modalPin').classList.remove('aberto');
+  const resolver = _pinResolver;
+  _pinResolver = null;
+  if (resolver) resolver(valor);
+}
+
+// Pede um PIN à pessoa e devolve o que ela digitou (ou null se cancelou).
+// Reaproveitado nos três fluxos: criar, confirmar e remover PIN.
+function pedirPin(titulo, mensagem) {
+  return new Promise(resolve => {
+    document.getElementById('pinTitulo').textContent = titulo;
+    document.getElementById('pinMensagem').textContent = mensagem || '';
+    document.getElementById('pinErro').textContent = '';
+    const inputVelho = document.getElementById('pinInput');
+    const input = inputVelho.cloneNode(true);
+    input.value = '';
+    inputVelho.replaceWith(input);
+
+    const cancelarVelho = document.getElementById('pinBtnCancelar');
+    const confirmarVelho = document.getElementById('pinBtnConfirmar');
+    const cancelar = cancelarVelho.cloneNode(true);
+    const confirmar = confirmarVelho.cloneNode(true);
+    cancelarVelho.replaceWith(cancelar);
+    confirmarVelho.replaceWith(confirmar);
+
+    _pinResolver = resolve;
+    cancelar.addEventListener('click', () => _fecharModalPin(null));
+    confirmar.addEventListener('click', () => _fecharModalPin(input.value));
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') confirmar.click(); });
+
+    document.getElementById('modalPin').classList.add('aberto');
+    setTimeout(() => input.focus(), 0);
+  });
+}
+document.getElementById('modalPin').addEventListener('click', (e) => {
+  if (e.target.id === 'modalPin') _fecharModalPin(null);
+});
+
+function atualizarBotaoPin() {
+  const temPin = !!dados.pinHash;
+  document.getElementById('btnConfigurarPin').textContent = temPin ? 'Alterar PIN' : 'Definir PIN';
+  document.getElementById('btnRemoverPin').style.display = temPin ? '' : 'none';
+}
+
+// ===== Configurar parcelamento de uma conta =====
+function configurarParcela(conta) {
+  const modal = document.getElementById('modalParcelas');
+  const inputAtualVelho = document.getElementById('parcelaAtualInput');
+  const inputTotalVelho = document.getElementById('parcelaTotalInput');
+  // Clona os campos e botões pra descartar handlers de uma chamada anterior
+  // (mesma técnica do confirmarModal/pedirPin) — sem isso, abrir esse modal
+  // pra contas diferentes iria acumulando um listener de clique por cima
+  // do outro.
+  const inputAtual = inputAtualVelho.cloneNode(true);
+  const inputTotal = inputTotalVelho.cloneNode(true);
+  inputAtualVelho.replaceWith(inputAtual);
+  inputTotalVelho.replaceWith(inputTotal);
+  inputAtual.value = conta.parcela ? conta.parcela.atual : 1;
+  inputTotal.value = conta.parcela ? conta.parcela.total : '';
+  document.getElementById('parcelaErro').textContent = '';
+
+  const btnRemoverVelho = document.getElementById('parcelaBtnRemover');
+  const btnCancelarVelho = document.getElementById('parcelaBtnCancelar');
+  const btnSalvarVelho = document.getElementById('parcelaBtnSalvar');
+  const btnRemover = btnRemoverVelho.cloneNode(true);
+  const btnCancelar = btnCancelarVelho.cloneNode(true);
+  const btnSalvar = btnSalvarVelho.cloneNode(true);
+  btnRemoverVelho.replaceWith(btnRemover);
+  btnCancelarVelho.replaceWith(btnCancelar);
+  btnSalvarVelho.replaceWith(btnSalvar);
+  btnRemover.style.display = conta.parcela ? '' : 'none';
+
+  function fechar() { modal.classList.remove('aberto'); }
+
+  btnCancelar.addEventListener('click', fechar);
+  btnRemover.addEventListener('click', () => {
+    conta.parcela = null;
+    salvar();
+    renderContas();
+    fechar();
+  });
+  btnSalvar.addEventListener('click', () => {
+    const atual = parseInt(inputAtual.value, 10);
+    const total = parseInt(inputTotal.value, 10);
+    const erro = document.getElementById('parcelaErro');
+    if (!Number.isInteger(atual) || !Number.isInteger(total) || atual < 1 || total < 1) {
+      erro.textContent = 'Preencha os dois campos com números maiores que zero.';
+      return;
+    }
+    if (atual > total) {
+      erro.textContent = 'A parcela atual não pode ser maior que o total.';
+      return;
+    }
+    conta.parcela = { atual, total };
+    salvar();
+    renderContas();
+    fechar();
+  });
+
+  modal.classList.add('aberto');
+  setTimeout(() => inputAtual.focus(), 0);
+}
+document.getElementById('modalParcelas').addEventListener('click', (e) => {
+  if (e.target.id === 'modalParcelas') document.getElementById('modalParcelas').classList.remove('aberto');
+});
+
+async function configurarPin() {
+  if (dados.pinHash) {
+    const atual = await pedirPin('Digite o PIN atual', 'Confirme antes de alterar.');
+    if (atual === null) return;
+    if ((await hashPin(atual)) !== dados.pinHash) {
+      await alertarModal('PIN atual incorreto.');
+      return;
+    }
+  }
+  const novo = await pedirPin('Criar um novo PIN', 'Use de 4 a 6 dígitos numéricos.');
+  if (novo === null) return;
+  if (!/^\d{4,6}$/.test(novo)) {
+    await alertarModal('O PIN precisa ter de 4 a 6 dígitos numéricos, nada mais.');
+    return;
+  }
+  const confirmacao = await pedirPin('Confirme o novo PIN');
+  if (confirmacao === null) return;
+  if (confirmacao !== novo) {
+    await alertarModal('Os PINs digitados não são iguais. Tente de novo.');
+    return;
+  }
+  dados.pinHash = await hashPin(novo);
+  salvar();
+  atualizarBotaoPin();
+  await alertarModal('PIN definido com sucesso.');
+}
+
+async function removerPin() {
+  const atual = await pedirPin('Digite o PIN atual', 'Confirme pra remover o bloqueio.');
+  if (atual === null) return;
+  if ((await hashPin(atual)) !== dados.pinHash) {
+    await alertarModal('PIN incorreto.');
+    return;
+  }
+  dados.pinHash = null;
+  salvar();
+  atualizarBotaoPin();
+  await alertarModal('Bloqueio por PIN removido.');
+}
+
+document.getElementById('btnConfigurarPin').addEventListener('click', configurarPin);
+document.getElementById('btnRemoverPin').addEventListener('click', removerPin);
+
+// Tela de bloqueio inicial: se existe um PIN configurado, cobre a tela
+// inteira até a pessoa acertar. Os dados já carregaram por trás (não tem
+// como "não carregar" e ainda assim o app funcionar) — essa tela só
+// impede a VISÃO, não é uma cripto de disco de verdade.
+function verificarBloqueioInicial() {
+  if (!dados.pinHash) return;
+  const overlay = document.getElementById('telaBloqueio');
+  const input = document.getElementById('bloqueioInput');
+  const erro = document.getElementById('bloqueioErro');
+  overlay.classList.add('aberto');
+  setTimeout(() => input.focus(), 100);
+
+  async function tentar() {
+    const digitado = await hashPin(input.value);
+    if (digitado === dados.pinHash) {
+      overlay.classList.remove('aberto');
+    } else {
+      erro.textContent = 'PIN incorreto, tente de novo.';
+      input.value = '';
+      input.focus();
+    }
+  }
+  document.getElementById('bloqueioBtnEntrar').addEventListener('click', tentar);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') tentar(); });
+}
+
+// ===== Onboarding =====
+const PASSOS_ONBOARDING = [
+  {
+    titulo: 'Bem-vindo(a) ao Controle Financeiro',
+    texto: 'Alguns passos rápidos pra você entender como o app funciona. Leva menos de 1 minuto, e dá pra pular a qualquer momento.'
+  },
+  {
+    titulo: 'Resumo do mês',
+    texto: 'No topo, você vê salário fixo, diárias recebidas, total das contas e o que sobra no fim do mês. Fica verde quando sobra, vermelho quando falta.'
+  },
+  {
+    titulo: 'Calendário e diárias',
+    texto: 'Se você trabalha por dia (diarista, freelancer, motorista de app), toque nos dias que trabalhou no calendário. O valor de cada dia entra sozinho no resumo.'
+  },
+  {
+    titulo: 'Contas e vencimentos',
+    texto: 'Cadastre suas contas fixas com valor, categoria e vencimento. Uma bolinha aparece no dia certo do calendário — vermelha se está pendente, verde se já foi paga.'
+  },
+  {
+    titulo: 'Fechar o mês',
+    texto: 'Quando o mês terminar, toque em "Fechar mês" — isso guarda um resumo no histórico e já prepara tudo pro mês seguinte. Vale também fazer backup dos seus dados de vez em quando, em "Minha conta".'
+  }
+];
+
+let onboardingPassoAtual = 0;
+
+function renderPassoOnboarding() {
+  const passo = PASSOS_ONBOARDING[onboardingPassoAtual];
+  document.getElementById('onboardingContador').textContent = `${onboardingPassoAtual + 1} de ${PASSOS_ONBOARDING.length}`;
+  document.getElementById('onboardingTitulo').textContent = passo.titulo;
+  document.getElementById('onboardingTexto').textContent = passo.texto;
+  document.getElementById('onboardingBtnAnterior').style.display = onboardingPassoAtual === 0 ? 'none' : '';
+  const ehUltimo = onboardingPassoAtual === PASSOS_ONBOARDING.length - 1;
+  document.getElementById('onboardingBtnProximo').textContent = ehUltimo ? 'Começar' : 'Próximo';
+  document.getElementById('onboardingBtnPular').style.display = ehUltimo ? 'none' : '';
+}
+
+function fecharOnboarding() {
+  document.getElementById('modalOnboarding').classList.remove('aberto');
+  dados.onboardingVisto = true;
+  salvar();
+}
+
+function abrirOnboarding() {
+  onboardingPassoAtual = 0;
+  renderPassoOnboarding();
+  document.getElementById('modalOnboarding').classList.add('aberto');
+}
+
+document.getElementById('onboardingBtnProximo').addEventListener('click', () => {
+  if (onboardingPassoAtual === PASSOS_ONBOARDING.length - 1) {
+    fecharOnboarding();
+  } else {
+    onboardingPassoAtual++;
+    renderPassoOnboarding();
+  }
+});
+document.getElementById('onboardingBtnAnterior').addEventListener('click', () => {
+  if (onboardingPassoAtual > 0) {
+    onboardingPassoAtual--;
+    renderPassoOnboarding();
+  }
+});
+document.getElementById('onboardingBtnPular').addEventListener('click', fecharOnboarding);
+document.getElementById('btnVerTutorial').addEventListener('click', () => {
+  document.getElementById('modalConta').classList.remove('aberto');
+  abrirOnboarding();
+});
 
 // ===== Salvar / carregar (localStorage = guarda só neste navegador) =====
 // Guarda quem está logado agora (null = ninguém, app funciona só localmente).
@@ -449,19 +745,27 @@ function atualizarBadgeVencendo() {
 }
 
 // ===== Renderização da tabela de contas =====
+// Remove acentos e ignora maiúsculas/minúsculas — sem isso, buscar por
+// "educacao" não acharia uma conta com categoria "Educação", o que seria
+// bem frustrante de usar num app em português.
+function normalizarBusca(texto) {
+  return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+let termoBuscaContas = '';
+
 function renderContas() {
   const tbody = document.getElementById('tabelaContas');
   const aviso = document.getElementById('avisoVazio');
+  const avisoBusca = document.getElementById('avisoBuscaSemResultado');
   tbody.innerHTML = '';
-
-  aviso.style.display = dados.contas.length === 0 ? 'block' : 'none';
 
   // Mostra as contas ordenadas pelo critério escolhido na tela (vencimento,
   // valor ou nome). O array original (dados.contas) não muda de ordem — só
   // a exibição. Por isso usamos indexOf para achar a posição real ao
   // editar/duplicar/remover.
   const criterio = dados.ordenarContasPor || 'vencimento';
-  const contasOrdenadas = [...dados.contas].sort((a, b) => {
+  let contasOrdenadas = [...dados.contas].sort((a, b) => {
     if (criterio === 'valor') {
       return (Number(b.valor) || 0) - (Number(a.valor) || 0); // maior valor primeiro
     }
@@ -475,6 +779,23 @@ function renderContas() {
     return a.vencimento.localeCompare(b.vencimento);
   });
 
+  if (termoBuscaContas.trim() !== '') {
+    const termo = normalizarBusca(termoBuscaContas);
+    contasOrdenadas = contasOrdenadas.filter(c =>
+      normalizarBusca(c.nome).includes(termo) || normalizarBusca(c.categoria).includes(termo)
+    );
+  }
+
+  // Dois avisos de "vazio" diferentes: um é "você nunca cadastrou nada"
+  // (mostra o botão de adicionar como próximo passo natural), o outro é
+  // "sua busca não encontrou nada" (o problema é o termo digitado, não a
+  // falta de contas) — confundir os dois deixaria a pessoa achando que
+  // perdeu os dados cadastrados só porque digitou uma busca sem resultado.
+  const semNenhumaConta = dados.contas.length === 0;
+  const semResultadoNaBusca = !semNenhumaConta && contasOrdenadas.length === 0;
+  aviso.style.display = semNenhumaConta ? 'block' : 'none';
+  avisoBusca.style.display = semResultadoNaBusca ? 'block' : 'none';
+
   contasOrdenadas.forEach((conta) => {
     const tr = document.createElement('tr');
 
@@ -486,11 +807,19 @@ function renderContas() {
     inputNome.placeholder = 'nome da conta';
     inputNome.addEventListener('input', e => { conta.nome = e.target.value; salvar(); });
     tdNome.appendChild(inputNome);
+    if (conta.parcela) {
+      const badge = document.createElement('span');
+      badge.className = 'badge-parcela';
+      badge.textContent = `${conta.parcela.atual}/${conta.parcela.total}`;
+      badge.title = `Parcela ${conta.parcela.atual} de ${conta.parcela.total}`;
+      tdNome.appendChild(badge);
+    }
 
     const tdValor = document.createElement('td');
     tdValor.dataset.label = 'Valor';
     const inputValor = document.createElement('input');
     inputValor.type = 'text';
+    inputValor.className = 'campo-valor-mono';
     inputValor.inputMode = 'decimal';
     inputValor.placeholder = '0,00';
     inputValor.value = (Number(conta.valor) === 0) ? '' : formatarMoedaInput(conta.valor);
@@ -576,7 +905,10 @@ function renderContas() {
         valor: conta.valor,
         status: conta.status,
         vencimento: conta.vencimento || '',
-        categoria: conta.categoria || ''
+        categoria: conta.categoria || '',
+        // A cópia nunca herda o parcelamento — senão as duas contas
+        // ficariam competindo pelo mesmo contador de parcelas ao fechar o mês.
+        parcela: null
       };
       dados.contas.splice(posicaoReal + 1, 0, copia);
       salvar(); renderContas(); renderResumo(); renderCalendario();
@@ -600,6 +932,14 @@ function renderContas() {
       salvar(); renderContas(); renderResumo(); renderCalendario();
     });
 
+    const btnParcela = document.createElement('button');
+    btnParcela.className = 'btn-duplicar';
+    btnParcela.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="7" height="7" rx="1"></rect><rect x="14" y="5" width="7" height="7" rx="1"></rect><rect x="8.5" y="14" width="7" height="7" rx="1"></rect></svg>';
+    btnParcela.setAttribute('aria-label', conta.parcela ? 'Editar parcelamento' : 'Marcar como parcelada');
+    btnParcela.title = conta.parcela ? 'Editar parcelamento' : 'Marcar como parcelada';
+    btnParcela.addEventListener('click', () => configurarParcela(conta));
+
+    acoesWrap.appendChild(btnParcela);
     acoesWrap.appendChild(btnDup);
     acoesWrap.appendChild(btnRem);
     tdAcoes.appendChild(acoesWrap);
@@ -653,14 +993,33 @@ function renderCalendario() {
     div.textContent = letra;
     cal.appendChild(div);
   });
+  // 8ª "coluna" do cabeçalho — só um espaço vazio, alinhado com os botões
+  // de marcar semana que aparecem embaixo, em cada linha.
+  const espacoCabecalho = document.createElement('div');
+  espacoCabecalho.className = 'cal-cabecalho';
+  cal.appendChild(espacoCabecalho);
 
   const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
   const totalDias = new Date(ano, mes + 1, 0).getDate();
 
-  for (let i = 0; i < primeiroDiaSemana; i++) {
-    const div = document.createElement('div');
-    div.className = 'dia vazio';
-    cal.appendChild(div);
+  // Cria o botão "marcar semana inteira" que fecha cada linha do
+  // calendário (a 8ª coluna do grid). Recebe só as chaves de dias REAIS
+  // daquela semana (os dias vazios de preenchimento no início/fim do mês
+  // não entram, não têm o que marcar).
+  function criarBotaoSemana(chavesDaSemana) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-semana';
+    btn.title = 'Marcar todos os dias desta semana como trabalhados';
+    btn.setAttribute('aria-label', 'Marcar toda a semana como trabalhada');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L19 7"></path></svg>';
+    btn.addEventListener('click', () => {
+      chavesDaSemana.forEach(chave => { dados.diasTrabalhados[chave] = true; });
+      salvar();
+      renderCalendario();
+      renderResumo();
+    });
+    return btn;
   }
 
   // Mapeia cada dia do mês exibido às contas que vencem nele — é aqui que
@@ -677,6 +1036,30 @@ function renderCalendario() {
     }
   });
 
+  // Acumula as chaves da semana que está sendo desenhada agora, pra
+  // quando fechar a linha (a cada 7 células) já ter a lista pronta pro
+  // botão. "coluna" conta de 0 a 6 (domingo a sábado), reiniciando a cada
+  // linha nova — os dias vazios de preenchimento também contam como
+  // coluna, senão a linha desalinharia.
+  let coluna = 0;
+  let chavesDaSemanaAtual = [];
+
+  function avancarColuna() {
+    coluna++;
+    if (coluna === 7) {
+      cal.appendChild(criarBotaoSemana(chavesDaSemanaAtual));
+      coluna = 0;
+      chavesDaSemanaAtual = [];
+    }
+  }
+
+  for (let i = 0; i < primeiroDiaSemana; i++) {
+    const div = document.createElement('div');
+    div.className = 'dia vazio';
+    cal.appendChild(div);
+    avancarColuna();
+  }
+
   for (let dia = 1; dia <= totalDias; dia++) {
     const chave = `${ano}-${mes}-${dia}`;
     const trabalhado = !!dados.diasTrabalhados[chave];
@@ -686,11 +1069,20 @@ function renderCalendario() {
     const contasDoDia = contasPorDia[dia] || [];
 
     const div = document.createElement('div');
-    div.className = 'dia' + (trabalhado ? ' trabalhado' : '') + (ehHoje ? ' hoje' : '') + (personalizado ? ' personalizado' : '');
+    div.className = 'dia' + (trabalhado ? ' trabalhado' : '') + (ehHoje ? ' hoje' : '') + (personalizado ? ' personalizado' : '')
+      + (chave === ultimoDiaMarcadoPop ? ' pop' : '');
     if (ehHoje) div.title = 'Hoje';
     div.innerHTML = `<span class="num">${dia}</span><span class="val">${valor > 0 ? formatarMoeda(valor).replace('R$ ', '') : ''}</span>`;
     div.addEventListener('click', () => {
-      dados.diasTrabalhados[chave] = !dados.diasTrabalhados[chave];
+      const vaiMarcar = !dados.diasTrabalhados[chave];
+      dados.diasTrabalhados[chave] = vaiMarcar;
+      // O "pop" só acontece ao MARCAR (não ao desmarcar) — e só nesse dia
+      // específico. Guardamos a chave numa variável de módulo porque
+      // renderCalendario() reconstrói o calendário inteiro do zero a cada
+      // chamada (inclusive por motivos que não têm nada a ver com esse
+      // clique); sem isso, toda vez que o calendário fosse redesenhado por
+      // qualquer razão, TODOS os dias já marcados dariam o pop juntos.
+      ultimoDiaMarcadoPop = vaiMarcar ? chave : null;
       salvar();
       renderCalendario();
       renderResumo();
@@ -720,7 +1112,24 @@ function renderCalendario() {
     }
 
     cal.appendChild(div);
+    chavesDaSemanaAtual.push(chave);
+    avancarColuna();
   }
+
+  // Se o mês terminou no meio de uma semana (a maioria dos meses termina
+  // assim), a última linha fica incompleta. Preenche com dias vazios até
+  // fechar a coluna 7, só pra conseguir mostrar o botão de marcar semana
+  // também nessa última linha parcial.
+  while (coluna !== 0) {
+    const div = document.createElement('div');
+    div.className = 'dia vazio';
+    cal.appendChild(div);
+    avancarColuna();
+  }
+
+  // Consumido — sem isso, o próximo redesenho do calendário (por qualquer
+  // outro motivo, ex: trocar de mês) faria o mesmo dia "pular" nunca.
+  ultimoDiaMarcadoPop = null;
 }
 
 function totalDiarias() {
@@ -737,24 +1146,189 @@ function totalDiarias() {
   return centavos / 100;
 }
 
+// Gastos avulsos do mês exibido — mesmo espírito do totalDiarias: filtra
+// pela data de cada gasto, não "reseta" nada ao fechar o mês (igual às
+// diárias, o registro fica pra sempre, só sai da vista ao trocar de mês).
+function gastosAvulsosDoMes() {
+  const ano = mesExibido.ano;
+  const mes = mesExibido.mes;
+  return dados.gastosAvulsos
+    .map((g, indice) => ({ ...g, indice })) // guarda a posição real, pra remover certo depois
+    .filter(g => {
+      if (!g.data) return false;
+      const [a, m] = g.data.split('-').map(Number);
+      return a === ano && (m - 1) === mes;
+    });
+}
+
+function totalGastosAvulsosDoMes() {
+  return somarMoeda(gastosAvulsosDoMes(), g => g.valor);
+}
+
+function renderGastosAvulsos() {
+  const lista = document.getElementById('listaGastosAvulsos');
+  const aviso = document.getElementById('avisoSemGastosAvulsos');
+  const gastos = gastosAvulsosDoMes().sort((a, b) => (b.data || '').localeCompare(a.data || '')); // mais recente primeiro
+
+  lista.innerHTML = '';
+  aviso.style.display = gastos.length === 0 ? 'block' : 'none';
+
+  gastos.forEach(gasto => {
+    const linha = document.createElement('div');
+    linha.className = 'gasto-avulso-linha';
+
+    const info = document.createElement('div');
+    info.className = 'gasto-avulso-info';
+    const descricao = document.createElement('span');
+    descricao.className = 'gasto-avulso-descricao';
+    descricao.textContent = gasto.descricao || 'Gasto sem descrição';
+    const data = document.createElement('span');
+    data.className = 'gasto-avulso-data';
+    data.textContent = gasto.data ? dataParaBR(gasto.data) : '';
+    info.appendChild(descricao);
+    info.appendChild(data);
+
+    const valor = document.createElement('span');
+    valor.className = 'gasto-avulso-valor';
+    valor.textContent = formatarMoeda(gasto.valor);
+
+    const btnRem = document.createElement('button');
+    btnRem.className = 'btn-remover';
+    btnRem.textContent = '✕';
+    btnRem.setAttribute('aria-label', 'Remover gasto avulso');
+    btnRem.addEventListener('click', async () => {
+      const ok = await confirmarModal({
+        titulo: 'Remover gasto',
+        mensagem: `Remover "${gasto.descricao || 'este gasto'}"?`,
+        textoConfirmar: 'Remover',
+        perigo: true
+      });
+      if (!ok) return;
+      dados.gastosAvulsos.splice(gasto.indice, 1);
+      salvar();
+      renderGastosAvulsos();
+      renderResumo();
+    });
+
+    linha.appendChild(info);
+    linha.appendChild(valor);
+    linha.appendChild(btnRem);
+    lista.appendChild(linha);
+  });
+
+  document.getElementById('totalGastosAvulsosRodape').textContent = formatarMoeda(totalGastosAvulsosDoMes());
+}
+
+// Domingo a sábado da semana de HOJE de verdade — não depende de qual mês
+// a pessoa está navegando no calendário, é sempre a semana atual do
+// calendário real, tenha ela dias em um mês ou espalhados por dois.
+function limitesSemanaAtual() {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() - hoje.getDay()); // getDay(): 0 = domingo
+  const fim = new Date(inicio);
+  fim.setDate(inicio.getDate() + 6);
+  return { inicio, fim };
+}
+
+// ===== Resumo da semana atual =====
+// Mesma estrutura do resumo mensal (diárias, contas, falta pagar, sobra),
+// só que olhando pra semana em vez do mês. Uma conta "entra" nessa semana
+// pela DATA DE VENCIMENTO, não pela categoria nem por quando foi criada.
+function renderResumoSemanal() {
+  const { inicio, fim } = limitesSemanaAtual();
+
+  // Diárias: percorre os 7 dias da semana (podem cair em meses diferentes,
+  // ex: sábado em agosto e domingo já em setembro) e soma quem foi marcado
+  // como trabalhado em cada um deles.
+  let centavosDiarias = 0;
+  for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
+    const chave = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (dados.diasTrabalhados[chave]) {
+      centavosDiarias += Math.round(valorDoDia(d.getFullYear(), d.getMonth(), d.getDate()) * 100);
+    }
+  }
+  const diariasSemana = centavosDiarias / 100;
+
+  // Contas: entram pela data de vencimento caindo dentro da semana —
+  // comparação por string "YYYY-MM-DD" funciona direto porque tanto os
+  // limites quanto o vencimento já vêm no mesmo formato ISO.
+  const isoInicio = inicio.toISOString().slice(0, 10);
+  const isoFim = fim.toISOString().slice(0, 10);
+  const contasDaSemana = dados.contas.filter(c => c.vencimento && c.vencimento >= isoInicio && c.vencimento <= isoFim);
+  const totalContasSemana = somarMoeda(contasDaSemana, c => c.valor);
+  const faltaPagarSemana = somarMoeda(contasDaSemana.filter(c => c.status === 'Pendente'), c => c.valor);
+  const sobraSemana = (Math.round(diariasSemana * 100) - Math.round(totalContasSemana * 100)) / 100;
+
+  document.getElementById('diariasSemana').textContent = formatarMoeda(diariasSemana);
+  document.getElementById('contasSemana').textContent = formatarMoeda(totalContasSemana);
+  document.getElementById('faltaPagarSemana').textContent = formatarMoeda(faltaPagarSemana);
+  const elSobraSemana = document.getElementById('sobraSemana');
+  elSobraSemana.textContent = formatarMoeda(sobraSemana);
+  elSobraSemana.closest('.resumo-item').classList.toggle('negativo', sobraSemana < 0);
+}
+
+// ===== Meta de economia =====
+// Compara a sobra do MÊS ATUAL (mesmo cálculo do Resumo do mês) com o
+// valor que a pessoa disse que quer guardar por mês.
+function renderMetaEconomia() {
+  const meta = Number(dados.metaEconomia) || 0;
+  const wrapProgresso = document.getElementById('metaProgressoWrap');
+  const avisoSemValor = document.getElementById('metaSemValor');
+
+  if (meta <= 0) {
+    wrapProgresso.style.display = 'none';
+    avisoSemValor.style.display = 'block';
+    return;
+  }
+  avisoSemValor.style.display = 'none';
+  wrapProgresso.style.display = 'block';
+
+  const totalContas = somarMoeda(dados.contas, c => c.valor);
+  const gastosAvulsos = totalGastosAvulsosDoMes();
+  const diarias = totalDiarias();
+  const salario = Number(dados.salario) || 0;
+  const totalSaidas = Math.round(totalContas * 100) + Math.round(gastosAvulsos * 100);
+  const sobra = (Math.round((salario + diarias) * 100) - totalSaidas) / 100;
+
+  const progresso = sobra <= 0 ? 0 : Math.min(100, (sobra / meta) * 100);
+  const barra = document.getElementById('metaBarraPreenchida');
+  barra.style.width = progresso.toFixed(1) + '%';
+  barra.classList.toggle('batida', sobra >= meta);
+
+  const texto = document.getElementById('metaProgressoTexto');
+  if (sobra <= 0) {
+    texto.textContent = `Ainda não há sobra este mês (meta: ${formatarMoeda(meta)}).`;
+  } else if (sobra >= meta) {
+    texto.textContent = `Meta batida! ${formatarMoeda(sobra)} de ${formatarMoeda(meta)}.`;
+  } else {
+    texto.textContent = `${formatarMoeda(sobra)} de ${formatarMoeda(meta)} (${progresso.toFixed(0)}%).`;
+  }
+}
+
 // ===== Resumo do mês =====
 function renderResumo() {
   const totalContas = somarMoeda(dados.contas, c => c.valor);
   const faltaPagar = somarMoeda(dados.contas.filter(c => c.status === 'Pendente'), c => c.valor);
   const diarias = totalDiarias();
   const salario = Number(dados.salario) || 0;
+  const gastosAvulsos = totalGastosAvulsosDoMes();
   const totalReceber = somarMoeda([{ v: salario }, { v: diarias }], i => i.v);
-  // "Sobra" usa o TOTAL das contas (pagas + pendentes), não só as pendentes.
-  // Uma conta paga já saiu do bolso — marcar como "Pago" é só um controle de
-  // status, não deve fazer esse dinheiro "voltar" para o valor que sobra.
-  // Quem muda com o status é só o "Falta pagar" (acima).
+  // "Sobra" usa o TOTAL das contas (pagas + pendentes), não só as pendentes,
+  // e agora também desconta os gastos avulsos do mês. Uma conta paga já
+  // saiu do bolso — marcar como "Pago" é só um controle de status, não deve
+  // fazer esse dinheiro "voltar" para o valor que sobra. Quem muda com o
+  // status é só o "Falta pagar" (acima).
   // A subtração final também passa por centavos inteiros (mesma razão do
   // somarMoeda: evitar que 0.1 + 0.2 vire 0.30000000000000004 na tela).
-  const sobra = (Math.round(totalReceber * 100) - Math.round(totalContas * 100)) / 100;
+  const totalSaidas = Math.round(totalContas * 100) + Math.round(gastosAvulsos * 100);
+  const sobra = (Math.round(totalReceber * 100) - totalSaidas) / 100;
 
   document.getElementById('totalDiarias').textContent = formatarMoeda(diarias);
   document.getElementById('totalContas').textContent = formatarMoeda(totalContas);
   document.getElementById('faltaPagar').textContent = formatarMoeda(faltaPagar);
+  document.getElementById('gastosAvulsosResumo').textContent = formatarMoeda(gastosAvulsos);
   const elSobra = document.getElementById('sobra');
   elSobra.textContent = formatarMoeda(sobra);
   // Fica vermelho quando o orçamento estoura (sobra negativa) — assim
@@ -763,6 +1337,9 @@ function renderResumo() {
   document.getElementById('totalGeralRodape').textContent = formatarMoeda(totalContas);
   renderResumoCategorias();
   renderGrafico();
+  renderResumoSemanal();
+  renderMetaEconomia();
+  renderGastosAvulsos();
 }
 
 // ===== Gráfico: entradas vs. gastos vs. sobra =====
@@ -771,25 +1348,27 @@ function renderResumo() {
 // barra calculada em proporção ao maior valor dos três.
 function renderGrafico() {
   const totalContas = somarMoeda(dados.contas, c => c.valor);
+  const gastosAvulsos = totalGastosAvulsosDoMes();
+  const totalGastos = (Math.round(totalContas * 100) + Math.round(gastosAvulsos * 100)) / 100;
   const diarias = totalDiarias();
   const salario = Number(dados.salario) || 0;
   const entradas = Math.round((salario + diarias) * 100) / 100;
-  const sobra = (Math.round(entradas * 100) - Math.round(totalContas * 100)) / 100;
+  const sobra = (Math.round(entradas * 100) - Math.round(totalGastos * 100)) / 100;
 
   const container = document.getElementById('graficoResumo');
   const aviso = document.getElementById('avisoGraficoVazio');
 
-  if (entradas === 0 && totalContas === 0) {
+  if (entradas === 0 && totalGastos === 0) {
     container.innerHTML = '';
     aviso.style.display = 'block';
     return;
   }
   aviso.style.display = 'none';
 
-  const maior = Math.max(entradas, totalContas, Math.abs(sobra), 1);
+  const maior = Math.max(entradas, totalGastos, Math.abs(sobra), 1);
   const linhas = [
     { label: 'Entradas', valor: entradas, classe: 'graf-entradas' },
-    { label: 'Gastos', valor: totalContas, classe: 'graf-gastos' },
+    { label: 'Gastos', valor: totalGastos, classe: 'graf-gastos' },
     { label: 'Sobra', valor: sobra, classe: sobra < 0 ? 'graf-sobra-negativa' : 'graf-sobra' }
   ];
 
@@ -846,6 +1425,56 @@ function construirGraficoPizza(entradas, total) {
   return `<svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label="Gráfico de pizza dos gastos por categoria">${partes.join('')}</svg>`;
 }
 
+// Abrevia o mês pro rótulo do eixo do gráfico de evolução — usa ano/mes
+// numéricos quando existem (registros feitos depois que esses campos
+// passaram a ser salvos); cai pro texto completo do mesLabel como reserva
+// pra registros mais antigos, que não têm esses números guardados.
+function abreviarMes(mes) {
+  if (Number.isInteger(mes.ano) && Number.isInteger(mes.mes)) {
+    return capitalizarPrimeira(new Date(mes.ano, mes.mes, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''));
+  }
+  return (mes.mesLabel || '?').slice(0, 3);
+}
+
+// Gráfico de linha mostrando como a "sobra" (o que sobra depois das contas)
+// mudou de um mês fechado pro outro. Recebe os meses já em ordem
+// cronológica (mais antigo primeiro — o oposto da ordem que o histórico
+// guarda, que é "mais recente primeiro").
+function construirGraficoEvolucao(meses) {
+  if (meses.length === 0) return '';
+  const largura = 300, altura = 110;
+  const margemEsq = 6, margemDir = 6, margemTopo = 10, margemBaixo = 20;
+  const areaLargura = largura - margemEsq - margemDir;
+  const areaAltura = altura - margemTopo - margemBaixo;
+
+  const valores = meses.map(m => m.sobra);
+  // O eixo sempre inclui o zero — é a linha de referência "nem sobrou nem
+  // faltou", sem ela não dá pra saber de relance se um mês foi bom ou ruim.
+  const maxVal = Math.max(0, ...valores);
+  const minVal = Math.min(0, ...valores);
+  const faixa = (maxVal - minVal) || 1; // evita dividir por zero se todo mundo empatar em 0
+
+  const coordX = (i) => margemEsq + (meses.length === 1 ? areaLargura / 2 : (i / (meses.length - 1)) * areaLargura);
+  const coordY = (v) => margemTopo + areaAltura - ((v - minVal) / faixa) * areaAltura;
+  const yZero = coordY(0);
+
+  const linhaZero = `<line x1="${margemEsq}" y1="${yZero.toFixed(1)}" x2="${largura - margemDir}" y2="${yZero.toFixed(1)}" stroke="var(--borda)" stroke-width="1" stroke-dasharray="3,3"></line>`;
+
+  const pontosLinha = meses.map((m, i) => `${coordX(i).toFixed(1)},${coordY(m.sobra).toFixed(1)}`).join(' ');
+  const linha = meses.length > 1
+    ? `<polyline points="${pontosLinha}" fill="none" stroke="var(--azul)" stroke-width="2"></polyline>`
+    : '';
+
+  const pontos = meses.map((m, i) => {
+    const cor = m.sobra >= 0 ? 'var(--verde-texto)' : 'var(--perigo)';
+    const x = coordX(i), y = coordY(m.sobra);
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${cor}"><title>${escaparHTML(m.mesLabel)}: ${formatarMoeda(m.sobra)}</title></circle>` +
+      `<text x="${x.toFixed(1)}" y="${altura - 4}" font-size="9" fill="var(--texto-terciario)" text-anchor="middle">${escaparHTML(abreviarMes(m))}</text>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${largura} ${altura}" width="100%" height="${altura}" role="img" aria-label="Gráfico de evolução da sobra mês a mês">${linhaZero}${linha}${pontos}</svg>`;
+}
+
 function renderResumoCategorias() {
   const container = document.getElementById('resumoCategorias');
   const porCategoriaCentavos = {};
@@ -900,6 +1529,60 @@ function avancarUmMes(dataStr) {
   return `${yy}-${mm}-${dd}`;
 }
 
+// ===== Duplicar mês inteiro =====
+// Diferente de "Fechar mês": isso NÃO arquiva nada no histórico e NÃO mexe
+// nas contas atuais — só cria uma cópia de cada uma, com vencimento um mês
+// à frente, pendente de pagamento. Serve pra já deixar as contas fixas do
+// mês seguinte prontas (aluguel, internet, etc.) sem esperar fechar o
+// mês atual — os dois conjuntos ficam juntos na mesma lista, separados
+// naturalmente pela ordenação por vencimento.
+async function duplicarMes() {
+  if (dados.contas.length === 0) {
+    await alertarModal('Não há contas cadastradas para duplicar.');
+    return;
+  }
+
+  // Contas parceladas já avançam sozinhas quando o mês é fechado (a parcela
+  // sobe, o vencimento avança). Duplicar elas aqui também criaria uma
+  // segunda cópia competindo pelo mesmo contador de parcelas — melhor
+  // deixar de fora e avisar, do que confundir "3/10" com duas contas
+  // diferentes tentando ser a mesma parcela.
+  const contasParaDuplicar = dados.contas.filter(c => !c.parcela);
+  const quantasParceladasForamPuladas = dados.contas.length - contasParaDuplicar.length;
+
+  if (contasParaDuplicar.length === 0) {
+    await alertarModal('Todas as contas atuais são parceladas — elas já avançam sozinhas ao fechar o mês, não precisam ser duplicadas.');
+    return;
+  }
+
+  const avisoParceladas = quantasParceladasForamPuladas > 0
+    ? `\n\n${quantasParceladasForamPuladas} conta(s) parcelada(s) foram deixadas de fora — elas já avançam sozinhas ao fechar o mês.`
+    : '';
+  const confirmar = await confirmarModal({
+    titulo: 'Duplicar mês?',
+    mensagem: `Isso cria uma cópia de ${contasParaDuplicar.length} conta(s), com vencimento um mês à frente e status "Pendente". As contas de hoje continuam exatamente como estão — nada é fechado nem arquivado.${avisoParceladas}\n\nSe já duplicou este mês antes, duplicar de novo cria contas repetidas.`,
+    textoConfirmar: 'Duplicar'
+  });
+  if (!confirmar) return;
+
+  const copias = contasParaDuplicar.map(conta => ({
+    nome: conta.nome,
+    valor: conta.valor,
+    categoria: conta.categoria,
+    status: 'Pendente',
+    vencimento: conta.vencimento ? avancarUmMes(conta.vencimento) : '',
+    parcela: null
+  }));
+  dados.contas.push(...copias);
+
+  salvar();
+  renderContas();
+  renderResumo();
+  renderCalendario();
+  await alertarModal(`${copias.length} conta(s) duplicada(s) com sucesso.`);
+}
+document.getElementById('btnDuplicarMes').addEventListener('click', duplicarMes);
+
 async function fecharMes() {
   if (dados.contas.length === 0) {
     await alertarModal('Não há contas cadastradas para fechar o mês.');
@@ -932,9 +1615,22 @@ async function fecharMes() {
   };
   dados.historicoMeses.unshift(registroDoMes);
 
-  dados.contas.forEach(conta => {
+  // Contas parceladas avançam a parcela sozinhas aqui. Quando a parcela que
+  // está sendo fechada agora É a última (atual === total), a conta não
+  // volta pro mês seguinte — o parcelamento acabou, ela sai da lista.
+  // Guardamos os nomes só pra avisar a pessoa no final.
+  const parceladasConcluidas = [];
+  dados.contas = dados.contas.filter(conta => {
+    if (conta.parcela) {
+      if (conta.parcela.atual >= conta.parcela.total) {
+        parceladasConcluidas.push(conta.nome && conta.nome.trim() ? conta.nome : 'Conta parcelada');
+        return false;
+      }
+      conta.parcela = { atual: conta.parcela.atual + 1, total: conta.parcela.total };
+    }
     conta.status = 'Pendente';
     if (conta.vencimento) conta.vencimento = avancarUmMes(conta.vencimento);
+    return true;
   });
 
   salvar();
@@ -955,7 +1651,10 @@ async function fecharMes() {
       .catch(e => console.error('Não foi possível enviar o backup mensal para a nuvem:', e));
   }
 
-  await alertarModal('Mês fechado! As contas estão prontas para o próximo mês.');
+  const avisoConcluidas = parceladasConcluidas.length > 0
+    ? `\n\nParcelamento concluído: ${parceladasConcluidas.join(', ')}.`
+    : '';
+  await alertarModal(`Mês fechado! As contas estão prontas para o próximo mês.${avisoConcluidas}`);
 }
 
 document.getElementById('btnFecharMes').addEventListener('click', fecharMes);
@@ -987,6 +1686,18 @@ function renderHistorico() {
   const historico = filtroAno === 'todos'
     ? historicoCompleto
     : historicoCompleto.filter(m => String(m.ano) === filtroAno);
+
+  // O gráfico usa os mesmos meses do filtro acima, só que em ordem
+  // cronológica (o histórico normal mostra mais recente primeiro; o
+  // gráfico de evolução precisa do mais antigo primeiro, senão o tempo
+  // andaria "de trás pra frente" da esquerda pra direita). Limitado aos
+  // últimos 12 pontos pra não virar uma linha espremida e ilegível se a
+  // pessoa acumular anos de histórico.
+  const graficoContainer = document.getElementById('graficoEvolucao');
+  const mesesParaGrafico = [...historico].reverse().slice(-12);
+  graficoContainer.innerHTML = mesesParaGrafico.length > 0
+    ? '<div class="resumo-categorias-titulo">Evolução da sobra</div>' + construirGraficoEvolucao(mesesParaGrafico)
+    : '';
 
   lista.innerHTML = '';
   aviso.style.display = historico.length === 0 ? 'block' : 'none';
@@ -1041,8 +1752,13 @@ document.getElementById('valorDomingo').addEventListener('input', e => {
   dados.valorDomingo = lerMoeda(e.target.value);
   salvar(); renderCalendario(); renderResumo();
 });
+document.getElementById('metaEconomia').addEventListener('input', e => {
+  aplicarMascaraMoeda(e.target);
+  dados.metaEconomia = lerMoeda(e.target.value);
+  salvar(); renderMetaEconomia();
+});
 document.getElementById('btnAddConta').addEventListener('click', () => {
-  dados.contas.push({ nome: '', valor: 0, status: 'Pendente', vencimento: '', categoria: '' });
+  dados.contas.push({ nome: '', valor: 0, status: 'Pendente', vencimento: '', categoria: '', parcela: null });
   salvar(); renderContas(); renderResumo();
   const linhas = document.querySelectorAll('#tabelaContas tr');
   const ultimaLinha = linhas[linhas.length - 1];
@@ -1052,9 +1768,40 @@ document.getElementById('btnAddConta').addEventListener('click', () => {
   }
 });
 
+document.getElementById('gastoAvulsoValor').addEventListener('input', e => aplicarMascaraMoeda(e.target));
+
+document.getElementById('btnAddGastoAvulso').addEventListener('click', async () => {
+  const descricaoEl = document.getElementById('gastoAvulsoDescricao');
+  const valorEl = document.getElementById('gastoAvulsoValor');
+  const dataEl = document.getElementById('gastoAvulsoData');
+
+  const valor = lerMoeda(valorEl.value);
+  if (valor <= 0) {
+    await alertarModal('Digite um valor maior que zero para o gasto.');
+    return;
+  }
+
+  dados.gastosAvulsos.push({
+    descricao: descricaoEl.value.trim(),
+    valor,
+    data: dataEl.value || new Date().toISOString().slice(0, 10)
+  });
+  salvar();
+
+  descricaoEl.value = '';
+  valorEl.value = '';
+  renderResumo();
+  descricaoEl.focus();
+});
+
 document.getElementById('ordenarContas').addEventListener('change', e => {
   dados.ordenarContasPor = e.target.value;
   salvar();
+  renderContas();
+});
+
+document.getElementById('buscaContas').addEventListener('input', e => {
+  termoBuscaContas = e.target.value;
   renderContas();
 });
 
@@ -1108,9 +1855,13 @@ document.querySelectorAll('#modalTemas .tema-opcao').forEach(btn => {
   btn.addEventListener('click', () => {
     const tema = btn.dataset.tema;
     if (!TEMAS_VALIDOS.includes(tema)) return; // defesa: nunca aplicar um valor fora da lista conhecida
+    // Liga a transição suave só por um instante, só pra essa troca ativa —
+    // ver explicação completa no CSS, perto de ".tema-transicionando".
+    document.documentElement.classList.add('tema-transicionando');
     dados.tema = tema;
     aplicarTema();
     salvar();
+    setTimeout(() => document.documentElement.classList.remove('tema-transicionando'), 300);
     document.getElementById('modalTemas').classList.remove('aberto');
   });
 });
@@ -1144,6 +1895,7 @@ function renderListaDiasEditar() {
 
     const input = document.createElement('input');
     input.type = 'text';
+    input.className = 'campo-valor-mono';
     input.inputMode = 'decimal';
     input.placeholder = '0,00';
     const temPersonalizado = dados.valoresPersonalizados[chave] !== undefined;
@@ -1567,7 +2319,10 @@ function aplicarDadosNaTela() {
   preencherCampoNumerico('valorSemana', dados.valorSemana);
   preencherCampoNumerico('valorSabado', dados.valorSabado);
   preencherCampoNumerico('valorDomingo', dados.valorDomingo);
+  preencherCampoNumerico('metaEconomia', dados.metaEconomia);
   document.getElementById('ordenarContas').value = dados.ordenarContasPor || 'vencimento';
+  document.getElementById('gastoAvulsoData').value = new Date().toISOString().slice(0, 10);
+  atualizarBotaoPin();
   renderContas();
   renderCalendario();
   renderResumo();
@@ -1576,6 +2331,14 @@ function aplicarDadosNaTela() {
 function iniciar() {
   carregar();
   aplicarDadosNaTela();
+  // Cobre a tela com o pedido de PIN o quanto antes, se tiver um
+  // configurado — mas depois de aplicarDadosNaTela(), já que precisamos
+  // saber se dados.pinHash existe (e isso só vem de carregar()).
+  verificarBloqueioInicial();
+  // Onboarding só na primeira abertura. Se também tiver PIN configurado,
+  // a tela de bloqueio (z-index maior) fica por cima até a pessoa
+  // desbloquear — depois disso, o onboarding já está logo atrás, visível.
+  if (!dados.onboardingVisto) abrirOnboarding();
 
   // Se o app ficar aberto passando da meia-noite, o destaque de "hoje"
   // precisa se mover sozinho. Verificamos a cada minuto (leve, não pesa)
@@ -1614,10 +2377,12 @@ document.addEventListener('keydown', (e) => {
     document.getElementById('btnBackup').click();
   } else if (e.key === 'Escape') {
     // O modal de confirmação/alerta já trata o Esc sozinho (tem sua própria
-    // Promise pra resolver) — aqui só fechamos os modais "simples", que não
-    // dependem de resolver nada, pra não interferir naquele fluxo.
+    // Promise pra resolver) — mesma coisa pro modalPin. A tela de bloqueio
+    // NUNCA pode fechar com Esc, senão o PIN não bloqueia nada de verdade.
     document.querySelectorAll('.modal-fundo.aberto').forEach(modal => {
-      if (modal.id !== 'modalConfirmacao') modal.classList.remove('aberto');
+      if (modal.id !== 'modalConfirmacao' && modal.id !== 'modalPin' && modal.id !== 'telaBloqueio') {
+        modal.classList.remove('aberto');
+      }
     });
   }
 });

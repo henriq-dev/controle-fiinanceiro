@@ -118,9 +118,31 @@ Rodada grande de correções e melhorias, a partir de uma auditoria técnica (bu
 
 ---
 
+## ✅ v2.2.0 — Novos recursos (segunda leva de sugestões)
+A partir de uma segunda lista de 24 sugestões, com o mesmo critério: sem frameworks, sem libs externas.
+
+**Beleza e polimento:**
+- Números do resumo maiores e com dígitos alinhados (`font-variant-numeric: tabular-nums`)
+- Transição suave (0,25s) ao trocar de tema — ativada só durante a troca em si, não o tempo todo, pra não deixar outras mudanças de cor (ex: "sobra" ficando negativa) lentas sem necessidade
+- Animação de entrada nos modais (fade + deslize) e "pop" ao marcar um dia como trabalhado — as duas respeitam `prefers-reduced-motion`
+
+**Ajustes práticos:**
+- Botão de marcar a semana inteira do calendário como trabalhada, de um toque
+- Busca na lista de contas por nome ou categoria (ignora acento e maiúscula/minúscula)
+- Bloqueio por PIN local (4-6 dígitos) — usa a Web Crypto API nativa do navegador (SHA-256) pra guardar só o hash, nunca o PIN em texto puro. É privacidade básica ("alguém pegou meu celular"), não é criptografia de dados de verdade
+- Duplicar o mês inteiro de contas com um toque, sem fechar/arquivar o mês atual (diferente do "Fechar mês")
+
+**Novos recursos:**
+- **Resumo da semana**: mesma estrutura do resumo mensal, baseado na semana atual (domingo a sábado), inclusive quando ela atravessa a virada de mês
+- **Gráfico de evolução da sobra** mês a mês, no histórico (linha SVG, pontos verdes/vermelhos conforme sobrou ou faltou, até 12 meses)
+- **Meta de economia**: valor-alvo por mês com barra de progresso, comparada com a sobra do mês atual
+- **Gastos avulsos**: despesas do dia a dia (tipo "gastei R$ 40 no lanche"), separadas das contas fixas — funcionam como as diárias (por data, sem "fechar" com o mês) e entram no cálculo da sobra em todos os lugares (resumo, gráfico, meta)
+
+---
+
 ## Como retomar em uma conversa nova
 1. Abra uma conversa nova dentro deste mesmo Projeto (a memória do projeto ajuda a manter o contexto).
 2. Se quiser, anexe os arquivos atuais do repositório (`index.html`, `style.css`, `script.js`) pra eu conferir o estado exato.
-3. Diga: "Vamos continuar" — o roadmap planejado (v1.0.0 até v2.1.0) está completo.
-   Resta só o backlog de grande escopo listado no fim da v2.1.0 (onboarding, push, fontes customizadas).
+3. Diga: "Vamos continuar" — o roadmap planejado (v1.0.0 até v2.2.0) está completo.
+   Resta só o backlog de grande escopo: contas parceladas, múltiplos perfis, onboarding, lembretes push, fontes customizadas — todos com ressalvas discutidas.
    Pergunte o que fazer a seguir: esses itens, novas ideias, ou revisão geral.
