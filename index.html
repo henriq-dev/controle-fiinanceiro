@@ -56,6 +56,15 @@
     </div>
   </header>
 
+  <!-- Seletor de perfil/carteira: troca rápida entre "Pessoal", "Trabalho"
+       etc. Criar/renomear/excluir fica em "Minha conta", pra não poluir
+       o topo com botões usados raramente. -->
+  <div class="seletor-perfil-wrap">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path></svg>
+    <label for="seletorPerfil" class="sr-only">Perfil / carteira ativa</label>
+    <select id="seletorPerfil"></select>
+  </div>
+
   <!-- Badge de aviso: só aparece quando há conta atrasada ou vencendo em
        breve. Escondido por padrão via style inline — o JS decide se mostra
        e o quê, com base nas contas cadastradas. -->
@@ -102,6 +111,19 @@
         </p>
         <button class="btn-secundario" id="btnConfigurarPin" style="width:100%;">Definir PIN</button>
         <button class="btn-secundario" id="btnRemoverPin" style="width:100%; display:none; color: var(--perigo);">Remover PIN</button>
+      </div>
+
+      <!-- Perfis/carteiras: trocar é rápido (seletor no topo), mas criar,
+           renomear e excluir ficam aqui — ações usadas raramente, não
+           precisam de espaço no topo do app. -->
+      <div class="modal-secao">
+        <strong>Perfis</strong>
+        <p class="modal-texto" style="margin-top:6px; margin-bottom:10px;">
+          Separe suas finanças em carteiras diferentes — ex: "Pessoal" e "Trabalho". Cada perfil tem suas próprias contas, diárias e histórico.
+        </p>
+        <button class="btn-secundario" id="btnNovoPerfil" style="width:100%;">Criar novo perfil</button>
+        <button class="btn-secundario" id="btnRenomearPerfil" style="width:100%;">Renomear perfil atual</button>
+        <button class="btn-secundario" id="btnExcluirPerfil" style="width:100%; color: var(--perigo);">Excluir perfil atual</button>
       </div>
 
       <div class="modal-secao">
@@ -154,6 +176,22 @@
       <div class="modal-acoes">
         <button class="btn-secundario" id="parcelaBtnCancelar" style="margin-top:0;">Cancelar</button>
         <button class="btn-add" id="parcelaBtnSalvar" style="margin-top:0;">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal genérico de texto: prompt reutilizável pra pedir um nome curto
+       (usado hoje só pra criar/renomear perfil, mas deixado genérico). -->
+  <div class="modal-fundo" id="modalTexto" role="dialog" aria-modal="true" aria-labelledby="textoTitulo">
+    <div class="modal-caixa modal-caixa-confirmacao">
+      <div class="modal-titulo" id="textoTitulo"></div>
+      <div class="modal-texto" id="textoMensagem"></div>
+      <label for="textoInput" class="sr-only">Texto</label>
+      <input type="text" id="textoInput" maxlength="30" autocomplete="off" style="width:100%; box-sizing:border-box; padding:10px; border-radius:8px; border:1px solid var(--borda); background:var(--cinza); color:var(--texto); font-family:inherit; margin-bottom:6px;">
+      <p class="status-save" id="textoErro" style="text-align:center; min-height:18px;"></p>
+      <div class="modal-acoes">
+        <button class="btn-secundario" id="textoBtnCancelar" style="margin-top:0;">Cancelar</button>
+        <button class="btn-add" id="textoBtnConfirmar" style="margin-top:0;">OK</button>
       </div>
     </div>
   </div>

@@ -221,6 +221,26 @@ h1 {
   flex-shrink: 0;
 }
 
+/* Seletor de perfil/carteira — discreto, mas sempre visível pra troca rápida. */
+.seletor-perfil-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--texto-terciario);
+  margin-bottom: 12px;
+}
+#seletorPerfil {
+  flex: 1;
+  max-width: 200px;
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--borda);
+  background: var(--card-bg);
+  color: var(--texto-secundario);
+  font-family: inherit;
+}
+
 /* Badge de contas vencendo/atrasadas no topo — só some quando não há nada
    urgente. Reaproveita as mesmas cores já usadas na bolinha de vencimento
    da tabela, pra manter o mesmo "código de cores" no app inteiro. */

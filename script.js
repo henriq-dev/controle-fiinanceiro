@@ -50,6 +50,59 @@ function carregarFirebase() {
 // Ninguém mais tem acesso a essas informações.
 const STORAGE_KEY = 'controle-financeiro-dados';
 
+// ===== Perfis/carteiras =====
+// Cada perfil (ex: "Pessoal", "Trabalho") tem seus próprios dados
+// financeiros, guardados numa chave PRÓPRIA no localStorage
+// (`STORAGE_KEY:NomeDoPerfil`). Só existe UM registro pequeno à parte
+// (CHAVE_PERFIS) guardando quais perfis existem e qual está ativo agora.
+// Essa separação existe de propósito: o resto do app inteiro (dados.contas,
+// dados.salario, etc.) continua funcionando exatamente igual — ele não sabe
+// nem precisa saber que existem "perfis". Trocar de perfil só troca QUAL
+// chave o salvar()/carregar() apontam, e recarrega tudo do zero.
+const CHAVE_PERFIS = 'controle-financeiro-perfis';
+let perfisInfo = { ativo: 'Pessoal', lista: ['Pessoal'] };
+
+function chaveStorageDoPerfil(nome) {
+  return `${STORAGE_KEY}:${nome}`;
+}
+
+// Lê (ou cria) o registro de perfis. Se a pessoa já usava o app antes dessa
+// funcionalidade existir, os dados dela estão na chave ANTIGA (sem nome de
+// perfil) — migramos automaticamente pra dentro de um perfil "Pessoal",
+// sem apagar o original, só por segurança.
+function carregarInfoPerfis() {
+  try {
+    const bruto = localStorage.getItem(CHAVE_PERFIS);
+    if (bruto) {
+      const salvo = JSON.parse(bruto);
+      if (salvo && Array.isArray(salvo.lista) && salvo.lista.length > 0 && typeof salvo.ativo === 'string') {
+        perfisInfo = salvo;
+        return;
+      }
+    }
+  } catch (e) {
+    console.log('Não foi possível ler o registro de perfis, criando um novo.', e);
+  }
+
+  // Não existe registro de perfis ainda. Se já existirem dados na chave
+  // antiga (de antes dessa funcionalidade), migra pra dentro do perfil
+  // "Pessoal" — a pessoa não deve perceber nenhuma diferença.
+  perfisInfo = { ativo: 'Pessoal', lista: ['Pessoal'] };
+  try {
+    const dadosAntigos = localStorage.getItem(STORAGE_KEY);
+    if (dadosAntigos && !localStorage.getItem(chaveStorageDoPerfil('Pessoal'))) {
+      localStorage.setItem(chaveStorageDoPerfil('Pessoal'), dadosAntigos);
+    }
+  } catch (e) {
+    console.log('Não foi possível migrar dados antigos pro perfil Pessoal.', e);
+  }
+  try {
+    localStorage.setItem(CHAVE_PERFIS, JSON.stringify(perfisInfo));
+  } catch (e) {
+    console.log('Não foi possível salvar o registro de perfis.', e);
+  }
+}
+
 let dados = {
   tema: 'light',
   salario: 0,
@@ -415,6 +468,155 @@ document.getElementById('modalPin').addEventListener('click', (e) => {
   if (e.target.id === 'modalPin') _fecharModalPin(null);
 });
 
+// Prompt de texto livre genérico — mesma lógica do pedirPin, mas sem
+// mascarar os caracteres (usado hoje só pra nomear/renomear perfil).
+function pedirTexto(titulo, mensagem, valorInicial) {
+  return new Promise(resolve => {
+    document.getElementById('textoTitulo').textContent = titulo;
+    document.getElementById('textoMensagem').textContent = mensagem || '';
+    document.getElementById('textoErro').textContent = '';
+    const inputVelho = document.getElementById('textoInput');
+    const input = inputVelho.cloneNode(true);
+    input.value = valorInicial || '';
+    inputVelho.replaceWith(input);
+
+    const cancelarVelho = document.getElementById('textoBtnCancelar');
+    const confirmarVelho = document.getElementById('textoBtnConfirmar');
+    const cancelar = cancelarVelho.cloneNode(true);
+    const confirmar = confirmarVelho.cloneNode(true);
+    cancelarVelho.replaceWith(cancelar);
+    confirmarVelho.replaceWith(confirmar);
+
+    function fechar(valor) {
+      document.getElementById('modalTexto').classList.remove('aberto');
+      resolve(valor);
+    }
+    cancelar.addEventListener('click', () => fechar(null));
+    confirmar.addEventListener('click', () => fechar(input.value.trim()));
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') confirmar.click(); });
+
+    document.getElementById('modalTexto').classList.add('aberto');
+    setTimeout(() => { input.focus(); input.select(); }, 0);
+  });
+}
+document.getElementById('modalTexto').addEventListener('click', (e) => {
+  if (e.target.id === 'modalTexto') document.getElementById('modalTexto').classList.remove('aberto');
+});
+
+// ===== Gerenciamento de perfis/carteiras =====
+function salvarInfoPerfis() {
+  try {
+    localStorage.setItem(CHAVE_PERFIS, JSON.stringify(perfisInfo));
+  } catch (e) {
+    console.error('Erro ao salvar registro de perfis:', e);
+  }
+}
+
+// Estrutura de dados vazia pra um perfil novo. tema/pinHash/onboardingVisto
+// são preferências do APARELHO, não da carteira financeira — por isso
+// atravessam a troca de perfil sem mudar (puxa do "dados" atual, antes de
+// trocar).
+function dadosPadraoNovoPerfil() {
+  return {
+    tema: dados.tema,
+    pinHash: dados.pinHash,
+    onboardingVisto: dados.onboardingVisto,
+    salario: 0, valorSemana: 0, valorSabado: 0, valorDomingo: 0,
+    contas: [], diasTrabalhados: {}, valoresPersonalizados: {},
+    historicoMeses: [], ordenarContasPor: 'vencimento', metaEconomia: 0,
+    gastosAvulsos: []
+  };
+}
+
+function trocarPerfil(nome) {
+  if (nome === perfisInfo.ativo) return;
+  // Salva o perfil atual NA HORA (não espera o debounce de 400ms) — trocar
+  // de perfil não pode arriscar perder uma edição recente.
+  clearTimeout(saveTimeout);
+  try {
+    localStorage.setItem(chaveStorageDoPerfil(perfisInfo.ativo), JSON.stringify(dados));
+  } catch (e) {
+    console.error('Erro ao salvar antes de trocar de perfil:', e);
+  }
+  perfisInfo.ativo = nome;
+  salvarInfoPerfis();
+  dados = dadosPadraoNovoPerfil();
+  carregar();
+  aplicarDadosNaTela();
+}
+
+function atualizarSeletorPerfis() {
+  const select = document.getElementById('seletorPerfil');
+  select.innerHTML = perfisInfo.lista
+    .map(nome => `<option value="${escaparHTML(nome)}">${escaparHTML(nome)}</option>`)
+    .join('');
+  select.value = perfisInfo.ativo;
+}
+
+document.getElementById('seletorPerfil').addEventListener('change', e => {
+  trocarPerfil(e.target.value);
+});
+
+async function criarPerfil() {
+  const nome = await pedirTexto('Novo perfil', 'Nome do novo perfil (ex: Trabalho, Empresa)');
+  if (!nome) return;
+  if (perfisInfo.lista.includes(nome)) {
+    await alertarModal('Já existe um perfil com esse nome.');
+    return;
+  }
+  perfisInfo.lista.push(nome);
+  salvarInfoPerfis();
+  trocarPerfil(nome);
+  atualizarSeletorPerfis();
+}
+
+async function renomearPerfilAtual() {
+  const nomeAtual = perfisInfo.ativo;
+  const novoNome = await pedirTexto('Renomear perfil', `Novo nome pra "${nomeAtual}"`, nomeAtual);
+  if (!novoNome || novoNome === nomeAtual) return;
+  if (perfisInfo.lista.includes(novoNome)) {
+    await alertarModal('Já existe um perfil com esse nome.');
+    return;
+  }
+  try {
+    localStorage.setItem(chaveStorageDoPerfil(novoNome), JSON.stringify(dados));
+    localStorage.removeItem(chaveStorageDoPerfil(nomeAtual));
+  } catch (e) {
+    console.error('Erro ao renomear perfil:', e);
+  }
+  perfisInfo.lista = perfisInfo.lista.map(p => p === nomeAtual ? novoNome : p);
+  perfisInfo.ativo = novoNome;
+  salvarInfoPerfis();
+  atualizarSeletorPerfis();
+}
+
+async function excluirPerfilAtual() {
+  if (perfisInfo.lista.length <= 1) {
+    await alertarModal('Não é possível excluir o único perfil que existe.');
+    return;
+  }
+  const nomeAtual = perfisInfo.ativo;
+  const ok = await confirmarModal({
+    titulo: 'Excluir perfil?',
+    mensagem: `Isso apaga TODOS os dados do perfil "${nomeAtual}" (contas, diárias, histórico) deste aparelho. Não pode ser desfeito.`,
+    textoConfirmar: 'Excluir',
+    perigo: true
+  });
+  if (!ok) return;
+  localStorage.removeItem(chaveStorageDoPerfil(nomeAtual));
+  perfisInfo.lista = perfisInfo.lista.filter(p => p !== nomeAtual);
+  perfisInfo.ativo = perfisInfo.lista[0];
+  salvarInfoPerfis();
+  dados = dadosPadraoNovoPerfil();
+  carregar();
+  aplicarDadosNaTela();
+  atualizarSeletorPerfis();
+}
+
+document.getElementById('btnNovoPerfil').addEventListener('click', criarPerfil);
+document.getElementById('btnRenomearPerfil').addEventListener('click', renomearPerfilAtual);
+document.getElementById('btnExcluirPerfil').addEventListener('click', excluirPerfilAtual);
+
 function atualizarBotaoPin() {
   const temPin = !!dados.pinHash;
   document.getElementById('btnConfigurarPin').textContent = temPin ? 'Alterar PIN' : 'Definir PIN';
@@ -635,7 +837,7 @@ function salvar() {
   clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+      localStorage.setItem(chaveStorageDoPerfil(perfisInfo.ativo), JSON.stringify(dados));
       statusEl.textContent = 'Salvo ✓';
       setTimeout(() => { statusEl.textContent = ''; }, 1500);
     } catch (e) {
@@ -657,7 +859,9 @@ function salvar() {
     clearTimeout(cloudSaveTimeout);
     cloudSaveTimeout = setTimeout(() => {
       const { fb, uid } = usuarioAtual;
-      fb.storeMod.setDoc(fb.storeMod.doc(fb.db, 'usuarios', uid), dados)
+      // Cada perfil é um documento PRÓPRIO dentro de uma subcoleção — assim,
+      // trocar de perfil na nuvem não sobrescreve os dados de outro perfil.
+      fb.storeMod.setDoc(fb.storeMod.doc(fb.db, 'usuarios', uid, 'perfis', perfisInfo.ativo), dados)
         .then(() => {
           statusEl.textContent = 'Sincronizado ✓';
           setTimeout(() => { statusEl.textContent = ''; }, 1500);
@@ -671,7 +875,7 @@ function salvar() {
 function carregar() {
   let temaSalvo = false;
   try {
-    const bruto = localStorage.getItem(STORAGE_KEY);
+    const bruto = localStorage.getItem(chaveStorageDoPerfil(perfisInfo.ativo));
     if (bruto) {
       const salvos = JSON.parse(bruto);
       if (salvos && typeof salvos.tema === 'string') temaSalvo = true;
@@ -1647,7 +1851,7 @@ async function fecharMes() {
   if (usuarioAtual) {
     const { fb, uid } = usuarioAtual;
     const chave = chaveMes(mesExibido.ano, mesExibido.mes);
-    fb.storeMod.setDoc(fb.storeMod.doc(fb.db, 'usuarios', uid, 'backupsMensais', chave), registroDoMes)
+    fb.storeMod.setDoc(fb.storeMod.doc(fb.db, 'usuarios', uid, 'perfis', perfisInfo.ativo, 'backupsMensais', chave), registroDoMes)
       .catch(e => console.error('Não foi possível enviar o backup mensal para a nuvem:', e));
   }
 
@@ -2205,7 +2409,11 @@ function ligarListenerDeConta() {
 async function sincronizarComANuvem(user, fb) {
   statusConta.textContent = 'Sincronizando...';
   try {
-    const ref = fb.storeMod.doc(fb.db, 'usuarios', user.uid);
+    // Cada perfil sincroniza com seu PRÓPRIO documento na nuvem — só o
+    // perfil ativo agora, no momento do login. Perfis locais que nunca
+    // foram abertos enquanto logado não têm cópia na nuvem ainda; isso só
+    // acontece na primeira vez que a pessoa trocar pra eles estando logada.
+    const ref = fb.storeMod.doc(fb.db, 'usuarios', user.uid, 'perfis', perfisInfo.ativo);
     const snap = await fb.storeMod.getDoc(ref);
 
     if (snap.exists()) {
@@ -2230,17 +2438,14 @@ async function sincronizarComANuvem(user, fb) {
       }
 
       if (usarNuvem) {
-        dados = Object.assign({
-          tema: dados.tema, salario: 0, valorSemana: 0, valorSabado: 0, valorDomingo: 0,
-          contas: [], diasTrabalhados: {}, valoresPersonalizados: {}, historicoMeses: []
-        }, dadosNuvem);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+        dados = Object.assign(dadosPadraoNovoPerfil(), dadosNuvem);
+        localStorage.setItem(chaveStorageDoPerfil(perfisInfo.ativo), JSON.stringify(dados));
         aplicarDadosNaTela();
       } else {
         await fb.storeMod.setDoc(ref, dados);
       }
     } else {
-      // Primeira vez desse usuário: sobe o que já existe neste aparelho.
+      // Primeira vez desse usuário/perfil: sobe o que já existe neste aparelho.
       await fb.storeMod.setDoc(ref, dados);
     }
     statusConta.textContent = '';
@@ -2329,6 +2534,8 @@ function aplicarDadosNaTela() {
 }
 
 function iniciar() {
+  carregarInfoPerfis();
+  atualizarSeletorPerfis();
   carregar();
   aplicarDadosNaTela();
   // Cobre a tela com o pedido de PIN o quanto antes, se tiver um

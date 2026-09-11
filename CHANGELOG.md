@@ -140,9 +140,21 @@ A partir de uma segunda lista de 24 sugestões, com o mesmo critério: sem frame
 
 ---
 
+## ✅ v2.3.0 — Grande escopo
+Os itens que mudavam estrutura de dados ou eram features de UI inteiras, deixados por último de propósito.
+
+- **Contas parceladas**: marca uma conta como "3/10", por exemplo — a cada "Fechar mês" a parcela avança sozinha; quando chega na última, a conta sai da lista (o parcelamento acabou). "Duplicar mês" pula as parceladas de propósito, pra não competir pelo mesmo contador.
+- **Onboarding guiado**: 5 passos na primeira abertura (resumo, calendário, contas, fechar mês). Dá pra pular ou rever depois em "Minha conta".
+- **Fontes customizadas**: Sora (títulos), Plus Jakarta Sans (corpo) e IBM Plex Mono (números) — baixadas do repositório oficial do Google Fonts no GitHub (licença SIL Open Font License) e servidas localmente na pasta `fonts/`, sem CDN. `sw.js` atualizado pra pré-cachear os `.woff2` também (cache `v1 → v2`).
+- **Múltiplos perfis/carteiras**: separa as finanças em carteiras diferentes (ex: "Pessoal" e "Trabalho"), cada uma com suas próprias contas, diárias e histórico. Tema e PIN continuam compartilhados entre perfis (são preferências do aparelho, não da carteira). Migração automática: quem já usava o app antes disso vira o perfil "Pessoal" sozinho. Cada perfil sincroniza pra um documento próprio na nuvem (`usuarios/{uid}/perfis/{nome}`).
+
+**Item que fica de fora, e continua assim:** lembretes push — exige um servidor disparando a notificação, não existe forma de fazer isso só com HTML/CSS/JS no navegador.
+
+---
+
 ## Como retomar em uma conversa nova
 1. Abra uma conversa nova dentro deste mesmo Projeto (a memória do projeto ajuda a manter o contexto).
 2. Se quiser, anexe os arquivos atuais do repositório (`index.html`, `style.css`, `script.js`) pra eu conferir o estado exato.
-3. Diga: "Vamos continuar" — o roadmap planejado (v1.0.0 até v2.2.0) está completo.
-   Resta só o backlog de grande escopo: contas parceladas, múltiplos perfis, onboarding, lembretes push, fontes customizadas — todos com ressalvas discutidas.
-   Pergunte o que fazer a seguir: esses itens, novas ideias, ou revisão geral.
+3. Diga: "Vamos continuar" — o roadmap inteiro (v1.0.0 até v2.3.0) está completo.
+   Só falta lembretes push, que exige backend — não é possível em vanilla puro.
+   Pergunte o que fazer a seguir: novas ideias, ajustes, ou revisão geral.
