@@ -226,6 +226,26 @@
     </div>
   </div>
 
+  <!-- Modal de categorias: criar, renomear, trocar a cor e excluir. Excluir
+       nunca apaga contas — elas só ficam "Sem categoria". -->
+  <div class="modal-fundo" id="modalCategorias" role="dialog" aria-modal="true" aria-labelledby="categoriasTitulo">
+    <div class="modal-caixa">
+      <div class="modal-titulo" id="categoriasTitulo">Categorias</div>
+      <div class="modal-texto">Toque na cor pra trocar, edite o nome pra renomear. Excluir uma categoria não apaga nenhuma conta.</div>
+      <div id="listaCategorias" class="cat-gerenciar-lista"></div>
+      <div class="modal-secao">
+        <strong>Nova categoria</strong>
+        <div class="cat-gerenciar-linha" style="margin-top:8px;">
+          <input type="color" id="novaCategoriaCor" class="cat-cor-input" aria-label="Cor da nova categoria" value="#d9534f">
+          <input type="text" id="novaCategoriaNome" class="campo-conta cat-nome-input" maxlength="60" placeholder="Ex: Pets, Assinaturas...">
+          <button class="btn-add" id="btnCriarCategoria" type="button">Criar</button>
+        </div>
+        <p class="cat-erro" id="categoriasErro" role="alert"></p>
+      </div>
+      <button class="btn-secundario" id="btnFecharModalCategorias" style="width:100%;">Fechar</button>
+    </div>
+  </div>
+
   <!-- Modal de backup: exportar os dados para um arquivo .json (guarda uma cópia
        fora do navegador) e importar esse arquivo de volta, em qualquer aparelho. -->
   <div class="modal-fundo" id="modalBackup">
@@ -289,6 +309,17 @@
   </div>
 
   <main>
+    <!-- Navegação em abas: divide o conteúdo (que antes era tudo numa
+         página só) em 3 grupos. Cada botão controla um painel (mostra o
+         dele, esconde os outros via atributo "hidden"). A aba ativa é
+         lembrada no localStorage, então reabrir o app volta pra mesma aba. -->
+    <nav class="tabs-nav" role="tablist" aria-label="Seções do app">
+      <button type="button" class="tab-btn" id="tabBtnResumo" role="tab" aria-selected="true" aria-controls="painelResumo" data-tab="resumo">Resumo</button>
+      <button type="button" class="tab-btn" id="tabBtnContas" role="tab" aria-selected="false" aria-controls="painelContas" data-tab="contas">Contas</button>
+      <button type="button" class="tab-btn" id="tabBtnDiaria" role="tab" aria-selected="false" aria-controls="painelDiaria" data-tab="diaria">Diária</button>
+    </nav>
+
+    <div class="tab-painel" id="painelResumo" data-tab="resumo" role="tabpanel" aria-labelledby="tabBtnResumo">
     <!-- Resumo do mês: números calculados a partir das outras seções -->
     <section class="card" aria-labelledby="tituloResumo">
       <h2 id="tituloResumo">Resumo do mês</h2>
@@ -373,11 +404,15 @@
       <p class="vazio-aviso" id="avisoGraficoVazio">Preencha o salário, as diárias ou alguma conta para ver o gráfico.</p>
     </section>
 
+    </div><!-- fim #painelResumo -->
+
+    <div class="tab-painel" id="painelContas" data-tab="contas" role="tabpanel" aria-labelledby="tabBtnContas" hidden>
     <!-- Contas: começa vazia de propósito, cada pessoa monta a sua lista -->
     <section class="card" aria-labelledby="tituloContas">
       <div class="contas-cabecalho">
         <h2 id="tituloContas">Contas</h2>
         <div class="ordenar-wrap">
+          <button class="btn-secundario btn-gerenciar-cat" id="btnGerenciarCategorias" type="button">Categorias</button>
           <label for="ordenarContas" class="sr-only">Ordenar contas por</label>
           <select id="ordenarContas">
             <option value="vencimento">Vencimento</option>
@@ -469,6 +504,9 @@
       </div>
     </div>
 
+    </div><!-- fim #painelContas -->
+
+    <div class="tab-painel" id="painelDiaria" data-tab="diaria" role="tabpanel" aria-labelledby="tabBtnDiaria" hidden>
     <!-- Diárias: valor por dia da semana + calendário para marcar os dias trabalhados -->
     <section class="card" aria-labelledby="tituloDiarias">
       <h2 id="tituloDiarias">Dias de trabalho e diária</h2>
@@ -494,6 +532,7 @@
       <div class="calendario" id="calendario"></div>
       <button class="btn-secundario" id="btnEditarDias" style="width:100%;">Ajustar valor de um dia específico</button>
     </section>
+    </div><!-- fim #painelDiaria -->
   </main>
 
   <!-- Modal para editar o valor de dias específicos (ex: um bico que pagou diferente do normal) -->

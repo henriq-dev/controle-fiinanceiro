@@ -309,6 +309,16 @@ function normalizarBackup(bruto) {
       }));
   }
 
+  // Categorias personalizadas: backup antigo (sem o campo) fica com o
+  // padrão via obterCategorias(); nomes repetidos/cores inválidas são limpos.
+  if (Array.isArray(bruto.categorias)) {
+    const vistos = new Set();
+    normalizado.categorias = bruto.categorias
+      .filter(c => c && typeof c === 'object' && typeof c.nome === 'string' && c.nome.trim())
+      .map(c => ({ nome: c.nome.trim().slice(0, 60), cor: COR_CATEGORIA_REGEX.test(c.cor || '') ? c.cor.toLowerCase() : '#999999' }))
+      .filter(c => { const k = normalizarBusca(c.nome); if (vistos.has(k)) return false; vistos.add(k); return true; });
+  }
+
   if (Array.isArray(bruto.gastosAvulsos)) {
     normalizado.gastosAvulsos = bruto.gastosAvulsos
       .filter(g => g && typeof g === 'object')
@@ -524,7 +534,8 @@ function dadosPadraoNovoPerfil() {
     salario: 0, valorSemana: 0, valorSabado: 0, valorDomingo: 0,
     contas: [], diasTrabalhados: {}, valoresPersonalizados: {},
     historicoMeses: [], ordenarContasPor: 'vencimento', metaEconomia: 0,
-    gastosAvulsos: []
+    gastosAvulsos: [],
+    categorias: CATEGORIAS_PADRAO.map(c => ({ ...c }))
   };
 }
 
@@ -917,7 +928,178 @@ function statusVencimento(vencStr) {
 
 // Categorias fixas, cada uma com uma cor própria (definida no CSS via
 // data-categoria). "Sem categoria" fica de fora do dropdown como padrão vazio.
-const CATEGORIAS = ['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Lazer', 'Educação', 'Outros'];
+// Agora as categorias são editáveis por perfil (dados.categorias = [{ nome, cor }]).
+// Esta lista é só o ponto de partida pra quem ainda não personalizou nada.
+const CATEGORIAS_PADRAO = [
+  { nome: 'Moradia', cor: '#4c78d9' }, { nome: 'Transporte', cor: '#9b6bd6' },
+  { nome: 'Alimentação', cor: '#e08a2c' }, { nome: 'Saúde', cor: '#e05c6f' },
+  { nome: 'Lazer', cor: '#3aa65c' }, { nome: 'Educação', cor: '#2ea8a8' },
+  { nome: 'Outros', cor: '#999999' }
+];
+const COR_CATEGORIA_REGEX = /^#[0-9a-f]{6}$/i;
+const PALETA_NOVAS_CATEGORIAS = ['#d9534f', '#5bc0de', '#f0ad4e', '#8e6c8a', '#6b8e23', '#c71585', '#20b2aa', '#cd853f'];
+
+// Sempre devolve a lista do perfil atual — se não existir (dados antigos,
+// perfil novo), cria a partir do padrão na hora.
+function obterCategorias() {
+  if (!Array.isArray(dados.categorias)) {
+    dados.categorias = CATEGORIAS_PADRAO.map(c => ({ ...c }));
+  }
+  return dados.categorias;
+}
+
+function corCategoria(nome) {
+  const cat = obterCategorias().find(c => c.nome === nome);
+  return cat ? cat.cor : '#999999';
+}
+
+function mesmoNomeCategoria(a, b) {
+  return normalizarBusca(a.trim()) === normalizarBusca(b.trim());
+}
+
+function criarCategoria(nome, cor) {
+  nome = String(nome || '').trim().slice(0, 60);
+  if (!nome) return { ok: false, erro: 'Digite um nome pra categoria.' };
+  const lista = obterCategorias();
+  if (lista.some(c => mesmoNomeCategoria(c.nome, nome))) return { ok: false, erro: 'Já existe uma categoria com esse nome.' };
+  if (!COR_CATEGORIA_REGEX.test(cor || '')) cor = PALETA_NOVAS_CATEGORIAS[lista.length % PALETA_NOVAS_CATEGORIAS.length];
+  lista.push({ nome, cor });
+  return { ok: true };
+}
+
+// Renomeia a categoria E atualiza todas as contas (e gastos do histórico
+// deste mês) que usavam o nome antigo — senão elas "perderiam" a categoria.
+function renomearCategoria(nomeAntigo, nomeNovo) {
+  nomeNovo = String(nomeNovo || '').trim().slice(0, 60);
+  if (!nomeNovo) return { ok: false, erro: 'O nome não pode ficar vazio.' };
+  const lista = obterCategorias();
+  const cat = lista.find(c => c.nome === nomeAntigo);
+  if (!cat) return { ok: false, erro: 'Categoria não encontrada.' };
+  if (nomeNovo === nomeAntigo) return { ok: true };
+  if (lista.some(c => c !== cat && mesmoNomeCategoria(c.nome, nomeNovo))) return { ok: false, erro: 'Já existe uma categoria com esse nome.' };
+  cat.nome = nomeNovo;
+  dados.contas.forEach(c => { if (c.categoria === nomeAntigo) c.categoria = nomeNovo; });
+  return { ok: true };
+}
+
+function colorirCategoria(nome, cor) {
+  const cat = obterCategorias().find(c => c.nome === nome);
+  if (!cat || !COR_CATEGORIA_REGEX.test(cor)) return false;
+  cat.cor = cor.toLowerCase();
+  return true;
+}
+
+// Exclui só a categoria: as contas que a usavam continuam existindo,
+// apenas passam a ficar "Sem categoria".
+function excluirCategoria(nome) {
+  const lista = obterCategorias();
+  const i = lista.findIndex(c => c.nome === nome);
+  if (i === -1) return 0;
+  lista.splice(i, 1);
+  let afetadas = 0;
+  dados.contas.forEach(c => { if (c.categoria === nome) { c.categoria = ''; afetadas++; } });
+  return afetadas;
+}
+
+function aplicarCorNoSelect(select, nome) {
+  select.dataset.categoria = nome || '';
+  select.style.borderLeft = nome ? `4px solid ${corCategoria(nome)}` : '';
+}
+
+// ===== Modal de gerenciar categorias =====
+function renderGerenciarCategorias() {
+  const lista = document.getElementById('listaCategorias');
+  const aviso = document.getElementById('categoriasErro');
+  lista.innerHTML = '';
+  const cats = obterCategorias();
+  if (cats.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'modal-texto';
+    p.textContent = 'Nenhuma categoria. Crie a primeira abaixo.';
+    lista.appendChild(p);
+  }
+  cats.forEach(cat => {
+    const emUso = dados.contas.filter(c => c.categoria === cat.nome).length;
+    const linha = document.createElement('div');
+    linha.className = 'cat-gerenciar-linha';
+
+    const cor = document.createElement('input');
+    cor.type = 'color'; cor.value = cat.cor; cor.className = 'cat-cor-input';
+    cor.setAttribute('aria-label', `Cor da categoria ${cat.nome}`);
+    cor.addEventListener('input', e => {
+      if (colorirCategoria(cat.nome, e.target.value)) { salvar(); renderContas(); renderResumo(); }
+    });
+
+    const nome = document.createElement('input');
+    nome.type = 'text'; nome.value = cat.nome; nome.maxLength = 60; nome.className = 'campo-conta cat-nome-input';
+    nome.setAttribute('aria-label', `Nome da categoria ${cat.nome}`);
+    const confirmarNome = () => {
+      const r = renomearCategoria(cat.nome, nome.value);
+      if (!r.ok) { aviso.textContent = r.erro; nome.value = cat.nome; return; }
+      aviso.textContent = '';
+      salvar(); renderContas(); renderResumo(); renderGerenciarCategorias();
+    };
+    nome.addEventListener('change', confirmarNome);
+    nome.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nome.blur(); } });
+
+    const uso = document.createElement('span');
+    uso.className = 'cat-uso';
+    uso.textContent = emUso === 1 ? '1 conta' : `${emUso} contas`;
+
+    const btnExcluir = document.createElement('button');
+    btnExcluir.className = 'btn-remover';
+    btnExcluir.textContent = '✕';
+    btnExcluir.title = `Excluir categoria ${cat.nome}`;
+    btnExcluir.setAttribute('aria-label', `Excluir categoria ${cat.nome}`);
+    btnExcluir.addEventListener('click', async () => {
+      const msg = emUso > 0
+        ? `A categoria "${cat.nome}" será excluída. ${emUso === 1 ? 'A conta que usava ela continua salva' : `As ${emUso} contas que usavam ela continuam salvas`}, só ficam "Sem categoria".`
+        : `Excluir a categoria "${cat.nome}"?`;
+      const ok = await confirmarModal({ titulo: 'Excluir categoria', mensagem: msg, textoConfirmar: 'Excluir', perigo: true });
+      if (!ok) return;
+      excluirCategoria(cat.nome);
+      salvar(); renderContas(); renderResumo(); renderGerenciarCategorias();
+    });
+
+    linha.append(cor, nome, uso, btnExcluir);
+    lista.appendChild(linha);
+  });
+  const cats2 = obterCategorias();
+  document.getElementById('novaCategoriaCor').value = PALETA_NOVAS_CATEGORIAS[cats2.length % PALETA_NOVAS_CATEGORIAS.length];
+}
+
+function abrirGerenciarCategorias() {
+  document.getElementById('categoriasErro').textContent = '';
+  document.getElementById('novaCategoriaNome').value = '';
+  renderGerenciarCategorias();
+  document.getElementById('modalCategorias').classList.add('aberto');
+}
+function fecharGerenciarCategorias() {
+  document.getElementById('modalCategorias').classList.remove('aberto');
+}
+function adicionarCategoriaDoModal() {
+  const inputNome = document.getElementById('novaCategoriaNome');
+  const r = criarCategoria(inputNome.value, document.getElementById('novaCategoriaCor').value);
+  const aviso = document.getElementById('categoriasErro');
+  if (!r.ok) { aviso.textContent = r.erro; return; }
+  aviso.textContent = '';
+  inputNome.value = '';
+  salvar(); renderContas(); renderGerenciarCategorias();
+  inputNome.focus();
+}
+document.getElementById('btnGerenciarCategorias').addEventListener('click', abrirGerenciarCategorias);
+document.getElementById('btnFecharModalCategorias').addEventListener('click', fecharGerenciarCategorias);
+document.getElementById('btnCriarCategoria').addEventListener('click', adicionarCategoriaDoModal);
+document.getElementById('novaCategoriaNome').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); adicionarCategoriaDoModal(); }
+});
+document.getElementById('modalCategorias').addEventListener('click', e => {
+  if (e.target.id === 'modalCategorias') fecharGerenciarCategorias();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('modalCategorias').classList.contains('aberto')
+      && !document.getElementById('modalConfirmacao').classList.contains('aberto')) fecharGerenciarCategorias();
+});
 
 // ===== Badge de contas vencendo/atrasadas =====
 // Reaproveita o mesmo statusVencimento() que já colore a bolinha de cada
@@ -1034,12 +1216,16 @@ function renderContas() {
     tdCategoria.dataset.label = 'Categoria';
     const selectCat = document.createElement('select');
     selectCat.className = 'categoria-select';
-    selectCat.dataset.categoria = conta.categoria || '';
+    aplicarCorNoSelect(selectCat, conta.categoria);
     const optVazia = document.createElement('option');
     optVazia.value = ''; optVazia.textContent = 'Sem categoria';
     if (!conta.categoria) optVazia.selected = true;
     selectCat.appendChild(optVazia);
-    CATEGORIAS.forEach(cat => {
+    const nomesCat = obterCategorias().map(c => c.nome);
+    // Categoria que veio de um backup antigo e não está na lista: mostra
+    // mesmo assim, pra não "sumir" silenciosamente da conta.
+    if (conta.categoria && !nomesCat.includes(conta.categoria)) nomesCat.push(conta.categoria);
+    nomesCat.forEach(cat => {
       const o = document.createElement('option');
       o.value = cat; o.textContent = cat;
       if (conta.categoria === cat) o.selected = true;
@@ -1047,7 +1233,7 @@ function renderContas() {
     });
     selectCat.addEventListener('change', e => {
       conta.categoria = e.target.value;
-      selectCat.dataset.categoria = conta.categoria;
+      aplicarCorNoSelect(selectCat, conta.categoria);
       salvar(); renderResumo();
     });
     tdCategoria.appendChild(selectCat);
@@ -1592,10 +1778,7 @@ function renderGrafico() {
 // ao maior valor — só aparece quando pelo menos uma conta tem categoria.
 // Mesma paleta usada nas bordas do <select> de categoria — assim a pizza e
 // o seletor de categoria falam a "mesma língua" de cores no app inteiro.
-const CATEGORIA_CORES = {
-  'Moradia': '#4c78d9', 'Transporte': '#9b6bd6', 'Alimentação': '#e08a2c',
-  'Saúde': '#e05c6f', 'Lazer': '#3aa65c', 'Educação': '#2ea8a8', 'Outros': '#999999'
-};
+
 
 // Converte um ângulo (em graus, 0° = direita, sentido horário) num ponto
 // (x,y) sobre um círculo de raio r centrado em (cx,cy). Usado pra desenhar
@@ -1610,7 +1793,7 @@ function construirGraficoPizza(entradas, total) {
   let anguloAtual = -90; // começa no topo (12h) em vez da direita (0°), como todo gráfico de pizza costuma começar
   const partes = entradas.map(([cat, valor]) => {
     const fracao = total > 0 ? valor / total : 0;
-    const cor = CATEGORIA_CORES[cat] || '#999999';
+    const cor = corCategoria(cat);
     let path;
     if (fracao >= 0.999) {
       // Uma única categoria com 100%: um arco de 360° degenera (início e
@@ -1703,7 +1886,7 @@ function renderResumoCategorias() {
       <div class="cat-barra-linha">
         <span class="cat-barra-label">${escaparHTML(cat)}</span>
         <div class="cat-barra-trilho">
-          <div class="cat-barra-preenchida" data-categoria="${escaparHTML(cat)}" style="width:${maior > 0 ? (valor / maior) * 100 : 0}%"></div>
+          <div class="cat-barra-preenchida" data-categoria="${escaparHTML(cat)}" style="background:${corCategoria(cat)};width:${maior > 0 ? (valor / maior) * 100 : 0}%"></div>
         </div>
         <span class="cat-barra-valor">${formatarMoeda(valor)}</span>
       </div>
@@ -2593,6 +2776,37 @@ document.addEventListener('keydown', (e) => {
     });
   }
 });
+
+// ===== Navegação em abas =====
+// Só um .tab-painel fica visível por vez (os outros ganham "hidden"). Os
+// elementos escondidos continuam no DOM normalmente — cálculos, calendário
+// e listas seguem atualizando por trás, só não aparecem até a pessoa trocar
+// de aba. A aba escolhida é lembrada no localStorage (chave separada dos
+// dados do app), então reabrir o app volta pra mesma aba de antes.
+const CHAVE_ABA_ATIVA = 'controleFinanceiroAbaAtiva';
+function mudarAba(nome) {
+  document.querySelectorAll('.tab-painel').forEach(painel => {
+    painel.hidden = painel.dataset.tab !== nome;
+  });
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const ativa = btn.dataset.tab === nome;
+    btn.classList.toggle('tab-ativa', ativa);
+    btn.setAttribute('aria-selected', ativa ? 'true' : 'false');
+  });
+  try { localStorage.setItem(CHAVE_ABA_ATIVA, nome); } catch (e) {
+    // Modo privado/navegação anônima pode bloquear localStorage — sem
+    // problema, só não lembra a aba na próxima vez que o app abrir.
+  }
+}
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => mudarAba(btn.dataset.tab));
+});
+(function restaurarAbaSalva() {
+  let aba = 'resumo';
+  try { aba = localStorage.getItem(CHAVE_ABA_ATIVA) || 'resumo'; } catch (e) { /* ignora */ }
+  if (!document.querySelector(`.tab-painel[data-tab="${aba}"]`)) aba = 'resumo';
+  mudarAba(aba);
+})();
 
 iniciar();
 

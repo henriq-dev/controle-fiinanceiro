@@ -1,5 +1,16 @@
 # Changelog — Controle Financeiro
 
+## Navegação em 3 abas
+- Conteúdo dividido em **Resumo** (resumo do mês, resumo da semana, meta de economia, gráfico), **Contas** (contas fixas, categorias, histórico, gastos avulsos) e **Diária** (calendário de diárias).
+- A aba escolhida fica salva no aparelho — reabrir o app volta pra mesma aba.
+- Trocar de aba só esconde a seção (`hidden`), não desliga nada: cálculos e listas continuam atualizando por trás.
+
+## Categorias personalizáveis
+- Novo botão **Categorias** na seção Contas: criar, renomear, trocar a cor e excluir categorias.
+- Renomear atualiza todas as contas que usavam o nome antigo.
+- Excluir uma categoria não apaga nenhuma conta — elas ficam "Sem categoria".
+- Categorias são salvas por perfil e entram no backup (.json).
+
 Site: https://controle-fiinanceiro.vercel.app/
 Repositório: GitHub (controle-fiinanceiro)
 

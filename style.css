@@ -271,6 +271,43 @@ h1 {
 }
 .btn-icone:active { background: var(--hover-bg); }
 
+/* ===== Navegação em abas =====
+   Divide o conteúdo em 3 grupos (antes era tudo numa página só, rolando
+   sem fim). Só um .tab-painel fica visível por vez — os outros ganham o
+   atributo "hidden" via JS, então continuam existindo (os cálculos e
+   valores continuam atualizados por trás), só não aparecem na tela. */
+.tabs-nav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--borda);
+  position: sticky;
+  top: 0;
+  background: var(--cinza);
+  z-index: 5;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px 6px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--texto-secundario);
+  font-family: 'Sora', 'Plus Jakarta Sans', -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab-btn:active { background: var(--hover-bg); }
+.tab-btn.tab-ativa {
+  color: var(--azul);
+  border-bottom-color: var(--azul);
+}
+.tab-painel[hidden] { display: none; }
+
 .card {
   background: var(--card-bg);
   border: 1px solid var(--borda);
@@ -483,13 +520,6 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   background: var(--cinza);
   color: var(--texto);
 }
-.categoria-select[data-categoria="Moradia"] { border-left: 4px solid #4c78d9; }
-.categoria-select[data-categoria="Transporte"] { border-left: 4px solid #9b6bd6; }
-.categoria-select[data-categoria="Alimentação"] { border-left: 4px solid #e08a2c; }
-.categoria-select[data-categoria="Saúde"] { border-left: 4px solid #e05c6f; }
-.categoria-select[data-categoria="Lazer"] { border-left: 4px solid #3aa65c; }
-.categoria-select[data-categoria="Educação"] { border-left: 4px solid #2ea8a8; }
-.categoria-select[data-categoria="Outros"] { border-left: 4px solid #999999; }
 
 /* ===== Vencimento ===== */
 .venc-wrap {
@@ -686,12 +716,6 @@ select.status.pendente { background: var(--vermelho); color: var(--vermelho-text
   min-width: 3px;
   background: #999999;
 }
-.cat-barra-preenchida[data-categoria="Moradia"] { background: #4c78d9; }
-.cat-barra-preenchida[data-categoria="Transporte"] { background: #9b6bd6; }
-.cat-barra-preenchida[data-categoria="Alimentação"] { background: #e08a2c; }
-.cat-barra-preenchida[data-categoria="Saúde"] { background: #e05c6f; }
-.cat-barra-preenchida[data-categoria="Lazer"] { background: #3aa65c; }
-.cat-barra-preenchida[data-categoria="Educação"] { background: #2ea8a8; }
 
 /* ===== Meta de economia ===== */
 .meta-linha {
@@ -1356,3 +1380,14 @@ html.tema-transicionando, html.tema-transicionando * {
   100% { transform: scale(1); }
 }
 .dia.pop { animation: dia-pop 0.28s ease; }
+
+/* ===== Gerenciar categorias ===== */
+.ordenar-wrap { display: flex; align-items: center; gap: 6px; }
+.btn-gerenciar-cat { padding: 4px 10px; font-size: 12px; }
+.cat-gerenciar-lista { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; max-height: 50vh; overflow-y: auto; }
+.cat-gerenciar-linha { display: flex; align-items: center; gap: 8px; }
+.cat-cor-input { width: 36px; height: 32px; padding: 0; border: 1px solid var(--borda); border-radius: 6px; background: none; cursor: pointer; flex-shrink: 0; }
+.cat-nome-input { flex: 1; min-width: 0; margin: 0 !important; }
+.cat-uso { font-size: 11px; color: var(--texto-terciario); white-space: nowrap; }
+.cat-erro { color: var(--perigo); font-size: 12px; min-height: 1em; margin: 6px 0 0; }
+.cat-gerenciar-linha .btn-add { width: auto; margin: 0; }
