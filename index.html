@@ -333,7 +333,7 @@
           <input type="text" id="salario" placeholder="0,00" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]{0,2}">
         </div>
         <div class="resumo-item entrada">
-          <label>Diárias recebidas</label>
+          <label>Acumulado em diárias</label>
           <div class="valor" id="totalDiarias">R$ 0,00</div>
         </div>
         <div class="resumo-item saida">
@@ -528,13 +528,35 @@
           <input type="text" id="valorDomingo" placeholder="0,00" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]{0,2}">
         </div>
       </div>
+      <div class="diaria-acumulado" aria-live="polite">
+        <div class="diaria-acumulado-textos">
+          <span class="diaria-acumulado-label">Acumulado no mês</span>
+          <strong id="acumuladoDiariasMes">R$ 0,00</strong>
+          <span id="diasTrabalhadosMes">0 dias trabalhados</span>
+        </div>
+        <button type="button" class="btn-secundario btn-marcar-hoje" id="btnMarcarHoje">Marcar hoje como trabalhado</button>
+      </div>
       <div class="calendario-nav">
         <button class="btn-icone" id="btnMesAnterior" aria-label="Mês anterior">‹</button>
         <span id="rotuloMes" class="rotulo-mes"></span>
         <button class="btn-icone" id="btnMesProximo" aria-label="Próximo mês">›</button>
       </div>
+      <div class="calendario-legenda" aria-label="Legenda do calendário">
+        <span><i class="legenda-marcador legenda-nao-trabalhado" aria-hidden="true"></i>Não trabalhado</span>
+        <span><i class="legenda-marcador legenda-trabalhado" aria-hidden="true"></i>Trabalhado</span>
+        <span><i class="legenda-personalizado" aria-hidden="true"></i>Valor personalizado</span>
+      </div>
       <div class="calendario" id="calendario"></div>
-      <button class="btn-secundario" id="btnEditarDias" style="width:100%;">Ajustar valor de um dia específico</button>
+      <div class="dia-detalhe" id="diaDetalhe" aria-live="polite">
+        <div class="dia-detalhe-info">
+          <strong id="diaDetalheData"></strong>
+          <span id="diaDetalheStatus"></span>
+          <span id="diaDetalheValor"></span>
+          <span id="diaDetalheAvisoZero" class="dia-detalhe-aviso" hidden></span>
+        </div>
+        <button type="button" class="btn-secundario" id="btnAjustarDiaSelecionado" hidden>Ajustar diária deste dia</button>
+      </div>
+      <button class="btn-secundario btn-ajustar-mes" id="btnEditarDias" style="width:100%;">Ajustar valores dos dias trabalhados neste mês</button>
     </section>
     </div><!-- fim #painelDiaria -->
   </main>
