@@ -6,9 +6,9 @@ Feito em **HTML5, CSS3 e JavaScript puro (Vanilla)** — sem frameworks, sem bib
 
 ## O que o app faz
 
-- **Resumo do mês**: salário fixo, acumulado em diárias, total de contas, quanto falta pagar e o que vai sobrar.
-- **Contas**: lista editável com nome, valor e status (Pago/Pendente). Começa vazia — cada pessoa monta a sua.
-- **Diárias por calendário**: você define o valor pago em dias de semana, sábado e domingo, e marca no calendário quais dias trabalhou. O acumulado do mês e os dias trabalhados são somados automaticamente.
+- **Resumo do mês**: salário fixo, acumulado em diárias, total de contas, quanto falta pagar, sobra e comparação de despesas com o mês anterior quando há histórico disponível.
+- **Contas**: lista editável com nome, valor e status (Pago/Pendente), filtros por situação e alertas visuais para vencidas ou próximas do vencimento. Começa vazia — cada pessoa monta a sua.
+- **Diárias por calendário**: você define o valor padrão da diária em dias de semana, sábado e domingo, e marca no calendário quais dias trabalhou. O acumulado do mês e os dias trabalhados são somados automaticamente.
 - **Tema claro/escuro**, com detecção automática da preferência do sistema no primeiro acesso.
 - **Instalável como app** (PWA): dá pra adicionar na tela inicial do celular ou instalar no computador, com ícone e nome próprios, funcionando em tela cheia.
 - **Preview ao compartilhar**: ao colar o link no WhatsApp/Telegram, aparece um card com imagem, título e descrição.

@@ -300,6 +300,7 @@ function normalizarBackup(bruto) {
         mes: (Number.isInteger(m.mes) && m.mes >= 0 && m.mes <= 11) ? m.mes : null,
         fechadoEm: typeof m.fechadoEm === 'string' ? m.fechadoEm : '',
         totalContas: lerMoeda(m.totalContas),
+        gastosAvulsos: (typeof m.gastosAvulsos === 'number' && Number.isFinite(m.gastosAvulsos)) ? lerMoeda(m.gastosAvulsos) : null,
         diarias: lerMoeda(m.diarias),
         salario: lerMoeda(m.salario),
         sobra: (typeof m.sobra === 'number' && Number.isFinite(m.sobra)) ? Math.round(m.sobra * 100) / 100 : 0,
@@ -1140,6 +1141,7 @@ function normalizarBusca(texto) {
 }
 
 let termoBuscaContas = '';
+let filtroStatusContas = 'todas';
 
 function renderContas() {
   const tbody = document.getElementById('tabelaContas');
@@ -1166,6 +1168,21 @@ function renderContas() {
     return a.vencimento.localeCompare(b.vencimento);
   });
 
+  const filtroStatus = document.getElementById('filtroStatusContas');
+  if (filtroStatus) filtroStatus.value = filtroStatusContas;
+  const contagemPendentes = dados.contas.filter(c => c.status === 'Pendente').length;
+  const contagemPagas = dados.contas.filter(c => c.status === 'Pago').length;
+  const contagemAtrasadas = dados.contas.filter(c => c.status === 'Pendente' && statusVencimento(c.vencimento) === 'atrasada').length;
+  if (filtroStatus) {
+    filtroStatus.options[0].textContent = `Todas as contas (${dados.contas.length})`;
+    filtroStatus.options[1].textContent = `Pendentes (${contagemPendentes})`;
+    filtroStatus.options[2].textContent = `Pagas (${contagemPagas})`;
+    filtroStatus.options[3].textContent = `Atrasadas (${contagemAtrasadas})`;
+  }
+  if (filtroStatusContas === 'pendentes') contasOrdenadas = contasOrdenadas.filter(c => c.status === 'Pendente');
+  else if (filtroStatusContas === 'pagas') contasOrdenadas = contasOrdenadas.filter(c => c.status === 'Pago');
+  else if (filtroStatusContas === 'atrasadas') contasOrdenadas = contasOrdenadas.filter(c => c.status === 'Pendente' && statusVencimento(c.vencimento) === 'atrasada');
+
   if (termoBuscaContas.trim() !== '') {
     const termo = normalizarBusca(termoBuscaContas);
     contasOrdenadas = contasOrdenadas.filter(c =>
@@ -1173,18 +1190,24 @@ function renderContas() {
     );
   }
 
-  // Dois avisos de "vazio" diferentes: um é "você nunca cadastrou nada"
-  // (mostra o botão de adicionar como próximo passo natural), o outro é
-  // "sua busca não encontrou nada" (o problema é o termo digitado, não a
-  // falta de contas) — confundir os dois deixaria a pessoa achando que
-  // perdeu os dados cadastrados só porque digitou uma busca sem resultado.
+  // Mensagem distinta para lista realmente vazia versus busca/filtro sem correspondências.
   const semNenhumaConta = dados.contas.length === 0;
   const semResultadoNaBusca = !semNenhumaConta && contasOrdenadas.length === 0;
   aviso.style.display = semNenhumaConta ? 'block' : 'none';
   avisoBusca.style.display = semResultadoNaBusca ? 'block' : 'none';
+  if (semResultadoNaBusca) {
+    if (termoBuscaContas.trim() !== '') avisoBusca.textContent = 'Nenhuma conta encontrada pra essa busca e filtro.';
+    else if (filtroStatusContas === 'atrasadas') avisoBusca.textContent = 'Nenhuma conta atrasada.';
+    else if (filtroStatusContas === 'pendentes') avisoBusca.textContent = 'Nenhuma conta pendente.';
+    else if (filtroStatusContas === 'pagas') avisoBusca.textContent = 'Nenhuma conta paga.';
+    else avisoBusca.textContent = 'Nenhuma conta encontrada.';
+  }
 
   contasOrdenadas.forEach((conta) => {
     const tr = document.createElement('tr');
+    const sitVenc = conta.status === 'Pendente' ? statusVencimento(conta.vencimento) : null;
+    if (sitVenc === 'atrasada') tr.classList.add('conta-atrasada');
+    else if (sitVenc === 'proxima') tr.classList.add('conta-proxima');
 
     const tdNome = document.createElement('td');
     tdNome.dataset.label = 'Conta';
@@ -1244,7 +1267,6 @@ function renderContas() {
     const wrapVenc = document.createElement('div');
     wrapVenc.className = 'venc-wrap';
     const bolinha = document.createElement('span');
-    const sitVenc = conta.status === 'Pendente' ? statusVencimento(conta.vencimento) : null;
     bolinha.className = 'venc-bolinha' + (sitVenc ? ' ' + sitVenc : '');
     if (sitVenc === 'atrasada') bolinha.title = 'Vencida';
     else if (sitVenc === 'proxima') bolinha.title = 'Vence em breve';
@@ -1257,6 +1279,12 @@ function renderContas() {
     });
     wrapVenc.appendChild(bolinha);
     wrapVenc.appendChild(inputVenc);
+    if (sitVenc === 'atrasada' || sitVenc === 'proxima') {
+      const textoVenc = document.createElement('span');
+      textoVenc.className = 'venc-destaque';
+      textoVenc.textContent = sitVenc === 'atrasada' ? 'Atrasada' : 'Vence em breve';
+      wrapVenc.appendChild(textoVenc);
+    }
     tdVencimento.appendChild(wrapVenc);
 
     const tdStatus = document.createElement('td');
@@ -1757,6 +1785,106 @@ function renderMetaEconomia() {
   }
 }
 
+// ===== Comparação entre meses =====
+function encontrarRegistroHistorico(ano, mes) {
+  return (dados.historicoMeses || []).find(item => item.ano === ano && item.mes === mes) || null;
+}
+
+function totalGastosAvulsosPeriodo(ano, mes) {
+  const itens = (dados.gastosAvulsos || []).filter(gasto => {
+    if (!gasto.data) return false;
+    const [a, m] = gasto.data.split('-').map(Number);
+    return a === ano && (m - 1) === mes;
+  });
+  return somarMoeda(itens, gasto => gasto.valor);
+}
+
+function totalContasPorPeriodo(ano, mes, contas = dados.contas) {
+  const lista = (contas || []).filter(conta => {
+    if (typeof conta.vencimento !== 'string' || !conta.vencimento) return true;
+    const [a, m] = conta.vencimento.split('-').map(Number);
+    return a === ano && (m - 1) === mes;
+  });
+  return somarMoeda(lista, conta => conta.valor);
+}
+
+function totalDespesasHistoricas(registro) {
+  const avulsos = Number.isFinite(registro.gastosAvulsos)
+    ? registro.gastosAvulsos
+    : (Number.isInteger(registro.ano) && Number.isInteger(registro.mes)
+      ? totalGastosAvulsosPeriodo(registro.ano, registro.mes) : 0);
+  const contasDoPeriodo = Number.isInteger(registro.ano) && Number.isInteger(registro.mes)
+    && Array.isArray(registro.contas) && registro.contas.length > 0
+    ? totalContasPorPeriodo(registro.ano, registro.mes, registro.contas)
+    : (Number(registro.totalContas) || 0);
+  return (Math.round(contasDoPeriodo * 100) + Math.round((Number(avulsos) || 0) * 100)) / 100;
+}
+
+function nomeMesAno(ano, mes) {
+  return capitalizarPrimeira(new Date(ano, mes, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
+}
+
+function descreverVariacaoDespesas(atual, anterior, rotuloAnterior) {
+  const diferencaCentavos = Math.round((atual - anterior) * 100);
+  if (diferencaCentavos === 0) return { classe: 'comparacao-estavel', texto: `Gastos iguais ao mês anterior (${rotuloAnterior}).` };
+  const subiram = diferencaCentavos > 0;
+  const variacao = Math.abs(diferencaCentavos) / 100;
+  const percentual = anterior > 0 ? ` (${Math.round((variacao / anterior) * 100)}%)` : '';
+  return {
+    classe: subiram ? 'comparacao-subiu' : 'comparacao-caiu',
+    texto: `Gastos ${subiram ? 'subiram' : 'caíram'} ${formatarMoeda(variacao)}${percentual} em relação a ${rotuloAnterior}.`
+  };
+}
+
+function renderComparacaoMensal() {
+  const container = document.getElementById('comparacaoMensal');
+  if (!container) return;
+  container.innerHTML = '';
+  const titulo = document.createElement('strong');
+  titulo.className = 'comparacao-titulo';
+  titulo.textContent = 'Gastos vs. mês anterior';
+  const nota = document.createElement('span');
+  nota.className = 'comparacao-nota';
+  nota.textContent = 'Contas do período (ou sem data) + gastos avulsos.';
+  container.append(titulo, nota);
+
+  const hoje = new Date();
+  const ehMesAtual = mesExibido.ano === hoje.getFullYear() && mesExibido.mes === hoje.getMonth();
+  const registroAtual = encontrarRegistroHistorico(mesExibido.ano, mesExibido.mes);
+  let despesasAtuais = null;
+  if (registroAtual) despesasAtuais = totalDespesasHistoricas(registroAtual);
+  else if (ehMesAtual) {
+    const contasDoPeriodo = totalContasPorPeriodo(mesExibido.ano, mesExibido.mes, dados.contas);
+    const avulsosDoPeriodo = totalGastosAvulsosPeriodo(mesExibido.ano, mesExibido.mes);
+    despesasAtuais = (Math.round(contasDoPeriodo * 100) + Math.round(avulsosDoPeriodo * 100)) / 100;
+  }
+
+  const detalhe = document.createElement('span');
+  detalhe.className = 'comparacao-detalhe';
+  if (despesasAtuais === null) {
+    detalhe.textContent = 'Feche este mês para salvar um total confiável e comparar períodos.';
+    container.appendChild(detalhe);
+    return;
+  }
+  detalhe.textContent = registroAtual
+    ? `Fechamento de ${registroAtual.mesLabel || nomeMesAno(mesExibido.ano, mesExibido.mes)}: ${formatarMoeda(despesasAtuais)}.`
+    : `Despesas registradas neste mês: ${formatarMoeda(despesasAtuais)}.`;
+  container.appendChild(detalhe);
+
+  const dataAnterior = new Date(mesExibido.ano, mesExibido.mes - 1, 1);
+  const registroAnterior = encontrarRegistroHistorico(dataAnterior.getFullYear(), dataAnterior.getMonth());
+  const resultado = document.createElement('span');
+  if (!registroAnterior) {
+    resultado.className = 'comparacao-detalhe';
+    resultado.textContent = `Sem fechamento de ${nomeMesAno(dataAnterior.getFullYear(), dataAnterior.getMonth())}; a comparação aparecerá quando houver dados no histórico.`;
+  } else {
+    const variacao = descreverVariacaoDespesas(despesasAtuais, totalDespesasHistoricas(registroAnterior), registroAnterior.mesLabel || nomeMesAno(dataAnterior.getFullYear(), dataAnterior.getMonth()));
+    resultado.className = `comparacao-resultado ${variacao.classe}`;
+    resultado.textContent = variacao.texto;
+  }
+  container.appendChild(resultado);
+}
+
 // ===== Resumo do mês =====
 function renderResumo() {
   const totalContas = somarMoeda(dados.contas, c => c.valor);
@@ -1775,6 +1903,9 @@ function renderResumo() {
   const totalSaidas = Math.round(totalContas * 100) + Math.round(gastosAvulsos * 100);
   const sobra = (Math.round(totalReceber * 100) - totalSaidas) / 100;
 
+  const labelMes = document.getElementById('mesResumoLabel');
+  if (labelMes) labelMes.textContent = capitalizarPrimeira(new Date(mesExibido.ano, mesExibido.mes, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
+  renderComparacaoMensal();
   document.getElementById('totalDiarias').textContent = formatarMoeda(diarias);
   document.getElementById('totalContas').textContent = formatarMoeda(totalContas);
   document.getElementById('faltaPagar').textContent = formatarMoeda(faltaPagar);
@@ -2040,12 +2171,14 @@ async function fecharMes() {
     .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
   const totalContas = somarMoeda(dados.contas, c => c.valor);
   const diarias = totalDiarias();
+  const gastosAvulsos = totalGastosAvulsosDoMes();
   const salario = Number(dados.salario) || 0;
-  const sobra = (Math.round((salario + diarias) * 100) - Math.round(totalContas * 100)) / 100;
+  const totalSaidas = Math.round(totalContas * 100) + Math.round(gastosAvulsos * 100);
+  const sobra = (Math.round((salario + diarias) * 100) - totalSaidas) / 100;
 
   const confirmar = await confirmarModal({
     titulo: `Fechar ${nomeMes}?`,
-    mensagem: `Total de contas: ${formatarMoeda(totalContas)}\nSobra do mês: ${formatarMoeda(sobra)}\n\n` +
+    mensagem: `Total de contas: ${formatarMoeda(totalContas)}\nGastos avulsos: ${formatarMoeda(gastosAvulsos)}\nSobra do mês: ${formatarMoeda(sobra)}\n\n` +
       `Isso guarda esse resumo no histórico e todas as contas voltam para "Pendente" (prontas para o próximo mês).`,
     textoConfirmar: 'Fechar mês'
   });
@@ -2057,7 +2190,7 @@ async function fecharMes() {
     ano: mesExibido.ano,
     mes: mesExibido.mes, // 0-indexado, igual ao resto do app
     fechadoEm: new Date().toISOString(),
-    totalContas, diarias, salario, sobra,
+    totalContas, gastosAvulsos, diarias, salario, sobra,
     contas: JSON.parse(JSON.stringify(dados.contas)) // cópia independente, não muda mais depois
   };
   dados.historicoMeses.unshift(registroDoMes);
@@ -2158,10 +2291,23 @@ function renderHistorico() {
     item.innerHTML = `
       <strong>${escaparHTML(mes.mesLabel)}</strong>
       <div class="item-historico-linha"><span>Total de contas</span><span>${formatarMoeda(mes.totalContas)}</span></div>
+      <div class="item-historico-linha"><span>Gastos avulsos</span><span>${formatarMoeda(Number.isFinite(mes.gastosAvulsos) ? mes.gastosAvulsos : (Number.isInteger(mes.ano) && Number.isInteger(mes.mes) ? totalGastosAvulsosPeriodo(mes.ano, mes.mes) : 0))}</span></div>
+      <div class="item-historico-linha"><span>Despesas totais</span><span>${formatarMoeda(totalDespesasHistoricas(mes))}</span></div>
       <div class="item-historico-linha"><span>Diárias</span><span>${formatarMoeda(mes.diarias)}</span></div>
       <div class="item-historico-linha"><span>Sobra do mês</span><span>${formatarMoeda(mes.sobra)}</span></div>
       <div class="item-historico-linha"><span>Contas cadastradas</span><span>${(mes.contas || []).length}</span></div>
     `;
+    if (Number.isInteger(mes.ano) && Number.isInteger(mes.mes)) {
+      const dataAnterior = new Date(mes.ano, mes.mes - 1, 1);
+      const anterior = encontrarRegistroHistorico(dataAnterior.getFullYear(), dataAnterior.getMonth());
+      if (anterior) {
+        const variacao = descreverVariacaoDespesas(totalDespesasHistoricas(mes), totalDespesasHistoricas(anterior), anterior.mesLabel || nomeMesAno(dataAnterior.getFullYear(), dataAnterior.getMonth()));
+        const linhaComparacao = document.createElement('div');
+        linhaComparacao.className = `historico-comparacao ${variacao.classe}`;
+        linhaComparacao.textContent = variacao.texto;
+        item.appendChild(linhaComparacao);
+      }
+    }
     lista.appendChild(item);
   });
 }
@@ -2249,6 +2395,10 @@ document.getElementById('ordenarContas').addEventListener('change', e => {
 
 document.getElementById('buscaContas').addEventListener('input', e => {
   termoBuscaContas = e.target.value;
+  renderContas();
+});
+document.getElementById('filtroStatusContas').addEventListener('change', e => {
+  filtroStatusContas = e.target.value;
   renderContas();
 });
 

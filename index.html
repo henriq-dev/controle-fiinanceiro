@@ -326,7 +326,7 @@
     <div class="tab-painel" id="painelResumo" data-tab="resumo" role="tabpanel" aria-labelledby="tabBtnResumo">
     <!-- Resumo do mês: números calculados a partir das outras seções -->
     <section class="card" aria-labelledby="tituloResumo">
-      <h2 id="tituloResumo">Resumo do mês</h2>
+      <h2 id="tituloResumo"><span>Resumo do mês</span><span id="mesResumoLabel" class="mes-resumo-label"></span></h2>
       <div class="resumo-grid">
         <div class="resumo-item entrada">
           <label for="salario">Salário fixo</label>
@@ -353,6 +353,7 @@
           <div class="valor" id="sobra">R$ 0,00</div>
         </div>
       </div>
+      <div id="comparacaoMensal" class="comparacao-mensal" aria-live="polite"></div>
     </section>
 
     <!-- Resumo da semana: mesma estrutura do resumo mensal, só que baseado
@@ -429,6 +430,15 @@
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="busca-contas-icone"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
         <label for="buscaContas" class="sr-only">Buscar conta por nome ou categoria</label>
         <input type="text" id="buscaContas" placeholder="Buscar por nome ou categoria..." autocomplete="off">
+      </div>
+      <div class="filtro-contas-wrap">
+        <label for="filtroStatusContas">Mostrar:</label>
+        <select id="filtroStatusContas">
+          <option value="todas">Todas as contas</option>
+          <option value="pendentes">Pendentes</option>
+          <option value="pagas">Pagas</option>
+          <option value="atrasadas">Atrasadas</option>
+        </select>
       </div>
       <div class="table-scroll">
       <table>

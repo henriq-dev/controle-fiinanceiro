@@ -166,6 +166,13 @@ Os itens que mudavam estrutura de dados ou eram features de UI inteiras, deixado
 ## Como retomar em uma conversa nova
 1. Abra uma conversa nova dentro deste mesmo Projeto (a memória do projeto ajuda a manter o contexto).
 2. Se quiser, anexe os arquivos atuais do repositório (`index.html`, `style.css`, `script.js`) pra eu conferir o estado exato.
-3. Diga: "Vamos continuar" — o roadmap inteiro (v1.0.0 até v2.3.0) está completo.
+3. Diga: "Vamos continuar" — o roadmap inteiro (v1.0.0 até v2.4.0) está completo.
    Só falta lembretes push, que exige backend — não é possível em vanilla puro.
    Pergunte o que fazer a seguir: novas ideias, ajustes, ou revisão geral.
+
+## ✅ v2.4.0 — Resumo e contas mais claros
+- O Resumo mostra o mês atualmente selecionado no calendário.
+- Comparação das despesas (contas + gastos avulsos) com o mês anterior no Resumo e nos cartões do Histórico, sem estimar quando não há fechamento disponível.
+- Fechamentos passam a guardar o valor dos gastos avulsos e a incluí-los no cálculo da sobra histórica; registros antigos continuam compatíveis e aproveitam os gastos avulsos ainda registrados por data.
+- Filtro de contas por todas, pendentes, pagas ou atrasadas, com contadores atualizados.
+- Contas pendentes vencidas ou próximas do vencimento recebem destaque no texto e na linha, além dos indicadores já existentes.

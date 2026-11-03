@@ -1454,3 +1454,80 @@ html.tema-transicionando, html.tema-transicionando * {
   .dia-detalhe { align-items: stretch; flex-direction: column; }
   .dia-detalhe > .btn-secundario { width: 100%; }
 }
+
+/* ===== Período e comparação mensal do Resumo ===== */
+#tituloResumo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mes-resumo-label {
+  color: var(--texto-secundario);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+.comparacao-mensal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--azul);
+  border-radius: 0 8px 8px 0;
+  background: var(--cinza);
+  font-size: 12px;
+}
+.comparacao-titulo { color: var(--texto); font-size: 13px; }
+.comparacao-nota { color: var(--texto-terciario); font-size: 11px; }
+.comparacao-detalhe { color: var(--texto-secundario); line-height: 1.45; }
+.comparacao-resultado, .historico-comparacao { font-weight: 700; line-height: 1.45; }
+.comparacao-subiu { color: var(--perigo); }
+.comparacao-caiu { color: var(--verde-texto); }
+.comparacao-estavel { color: var(--texto-secundario); }
+.historico-comparacao {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--borda);
+  font-size: 12px;
+}
+
+/* ===== Filtro rápido e destaque de vencimentos ===== */
+.filtro-contas-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 12px;
+  color: var(--texto-secundario);
+  font-size: 12px;
+}
+.filtro-contas-wrap select {
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--texto);
+  font-family: inherit;
+}
+tr.conta-atrasada td { background: color-mix(in srgb, var(--vermelho) 30%, var(--card-bg)); }
+tr.conta-proxima td { background: color-mix(in srgb, #f0ad4e 14%, var(--card-bg)); }
+tr.conta-atrasada td:first-child { border-left: 3px solid var(--perigo); }
+tr.conta-proxima td:first-child { border-left: 3px solid #d99a1b; }
+.venc-destaque {
+  flex-basis: 100%;
+  margin-left: 13px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--texto-secundario);
+}
+.conta-atrasada .venc-destaque { color: var(--perigo); }
+.conta-proxima .venc-destaque { color: #8a5a00; }
+[data-theme="dark"] .conta-proxima .venc-destaque { color: #f0c674; }
+@media (max-width: 400px) {
+  #tituloResumo { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .mes-resumo-label { text-align: left; }
+}
