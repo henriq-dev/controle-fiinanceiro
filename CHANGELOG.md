@@ -75,6 +75,14 @@ Feito com **Firebase** (Authentication e/senha + Firestore), testado e funcionan
 - Limitação conhecida: vale a última gravação do documento inteiro (se dois aparelhos editarem ao mesmo tempo, o mais recente vence) e depende do relógio dos aparelhos estar correto
 - Testado com dois navegadores simulados + app sem Firebase (continua funcionando local)
 
+## ✅ v2.2.0 — App abre offline
+- Service worker com cache: depois do 1º acesso, o app abre mesmo sem internet (sem sinal, modo avião)
+- Estratégia "rede primeiro": com internet você sempre recebe a versão mais nova; sem internet, usa a cópia guardada
+- Offline tudo funciona (editar, salvar no aparelho); login e nuvem voltam quando a internet voltar
+- Firebase/Google não são guardados em cache (passam direto)
+- Ao lançar versão nova, subir `VERSAO` em `sw.js` limpa os caches antigos
+- Testado: cache criado, abre offline com dados e visual, salva offline, e atualização chega online
+
 ---
 
 ## Como retomar em uma conversa nova

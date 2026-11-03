@@ -10,6 +10,7 @@ Feito em **HTML5, CSS3 e JavaScript puro (Vanilla)** — sem frameworks, sem bib
 - **Contas**: lista editável com nome, valor e status (Pago/Pendente). Começa vazia — cada pessoa monta a sua.
 - **Diárias por calendário**: você define o valor pago em dias de semana, sábado e domingo, e marca no calendário quais dias trabalhou. O total é somado automaticamente.
 - **Tema claro/escuro**, com detecção automática da preferência do sistema no primeiro acesso.
+- **Funciona offline**: depois do primeiro acesso, o app abre sem internet.
 - **Instalável como app** (PWA): dá pra adicionar na tela inicial do celular ou instalar no computador, com ícone e nome próprios, funcionando em tela cheia.
 - **Preview ao compartilhar**: ao colar o link no WhatsApp/Telegram, aparece um card com imagem, título e descrição.
 
@@ -30,7 +31,7 @@ financeiro-app/
 ├── style.css         → todo o visual (cores, layout, tema claro/escuro)
 ├── script.js         → toda a lógica (cálculos, calendário, salvar/carregar)
 ├── manifest.json      → configuração do PWA (nome, ícones, cores)
-├── sw.js             → service worker (exigido pelo navegador para instalar o app)
+├── sw.js             → service worker (cache para abrir offline + exigido para instalar o app)
 ├── og-image.png       → imagem que aparece ao compartilhar o link
 ├── icon-16.png a icon-512.png → ícones do app em vários tamanhos
 └── favicon.ico       → ícone da aba do navegador

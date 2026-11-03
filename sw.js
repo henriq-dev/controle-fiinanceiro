@@ -1,81 +1,66 @@
-// Service worker com cache offline de verdade.
-//
-// Estratégia: "rede primeiro, cache como reserva".
-// - Com internet: sempre busca a versão mais nova no servidor (mantém a
-//   promessa original de nunca servir algo desatualizado por engano) e
-//   guarda uma cópia fresca no cache enquanto isso.
-// - Sem internet: usa essa última cópia salva, em vez de mostrar a tela de
-//   erro do navegador. É o que faltava pro app funcionar de verdade como
-//   PWA offline.
-//
-// CACHE_NAME tem um número de versão. Trocar esse número (ex: v1 -> v2) na
-// próxima atualização do app força os aparelhos das pessoas a descartarem
-// o cache antigo e baixarem tudo de novo — é assim que se invalida cache
-// de service worker, não tem outro jeito.
-const CACHE_NAME = 'controle-financeiro-v2';
+// Service worker com cache — faz o app abrir mesmo SEM internet.
+// Estratégia "rede primeiro, cache de reserva":
+//  1) Online: busca na rede (sempre a versão mais nova) e guarda uma cópia.
+//  2) Offline (ou rede lenta): entrega a cópia guardada.
+// Sobe a versão abaixo a cada release para limpar caches antigos.
+const VERSAO = 'financeiro-v2.2.0';
 
-// Arquivos "essenciais": sem eles o app nem abre. Pré-carregados na
-// instalação, pra já existir alguma coisa no cache mesmo antes da pessoa
-// perder internet pela primeira vez.
-const ARQUIVOS_ESSENCIAIS = [
+// Arquivos essenciais: guardados já na instalação, para o 1º uso offline funcionar.
+const ARQUIVOS = [
   './',
-  './index.html',
-  './style.css',
-  './script.js',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
-  './fonts/Sora.woff2',
-  './fonts/PlusJakartaSans.woff2',
-  './fonts/PlusJakartaSans-Italic.woff2',
-  './fonts/IBMPlexMono-Regular.woff2',
-  './fonts/IBMPlexMono-Bold.woff2'
+  'index.html',
+  'style.css',
+  'script.js',
+  'manifest.json',
+  'favicon.ico',
+  'icon-192.png',
+  'icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ARQUIVOS_ESSENCIAIS))
-      .catch(e => console.error('Falha ao pré-carregar arquivos essenciais:', e))
+    caches.open(VERSAO).then((cache) => cache.addAll(ARQUIVOS)).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  // Apaga caches de versões antigas (ex: "controle-financeiro-v0" de uma
-  // atualização anterior) — sem isso, o armazenamento do aparelho cresce
-  // pra sempre a cada nova versão do app.
   event.waitUntil(
-    caches.keys().then(chaves =>
-      Promise.all(chaves.filter(chave => chave !== CACHE_NAME).map(chave => caches.delete(chave)))
-    )
+    // Apaga caches de versões antigas e assume o controle das abas abertas.
+    caches.keys()
+      .then((nomes) => Promise.all(nomes.filter((n) => n !== VERSAO).map((n) => caches.delete(n))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
-  // Só mexemos em GET. POST/PUT (ex: chamadas ao Firestore quando logado)
-  // sempre vão direto pra rede — não faz sentido "cachear" uma escrita.
-  if (event.request.method !== 'GET') return;
+// Tenta a rede por até 4s; se falhar ou demorar, quem chama usa o cache.
+function redeComLimite(request, ms) {
+  return Promise.race([
+    fetch(request),
+    new Promise((_, rejeitar) => setTimeout(() => rejeitar(new Error('rede lenta')), ms))
+  ]);
+}
 
-  // Requisições pra outros domínios (Firebase, Google Fonts se algum dia
-  // forem usadas, etc) passam direto, sem entrar na nossa estratégia de
-  // cache — mexer em autenticação de terceiros por engano pode causar
-  // problema de login difícil de depurar.
-  if (new URL(event.request.url).origin !== self.location.origin) return;
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  const url = new URL(request.url);
+
+  // Só cuidamos de GET do próprio site. Firebase/Google (outros domínios) passam direto:
+  // login e nuvem precisam de internet de verdade e não devem ser guardados.
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   event.respondWith(
-    fetch(event.request)
-      .then(respostaFresca => {
-        const copia = respostaFresca.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copia));
-        return respostaFresca;
+    redeComLimite(request, 4000)
+      .then((resposta) => {
+        if (resposta && resposta.ok) {
+          const copia = resposta.clone(); // a resposta só pode ser lida uma vez
+          caches.open(VERSAO).then((cache) => cache.put(request, copia));
+        }
+        return resposta;
       })
-      .catch(() => {
-        // Sem internet: tenta servir a última cópia salva. Se nem isso
-        // existir (primeira visita já offline), cai no erro padrão do
-        // navegador — não tem como inventar um arquivo que nunca chegou.
-        return caches.match(event.request);
-      })
+      .catch(() =>
+        caches.match(request, { ignoreSearch: true }).then((guardado) =>
+          guardado || (request.mode === 'navigate' ? caches.match('index.html') : Response.error())
+        )
+      )
   );
 });
